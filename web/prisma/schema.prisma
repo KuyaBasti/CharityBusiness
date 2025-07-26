@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Location {
+  id                String            @id @default(cuid())
+  name              String
+  address           String
+  latitude          Float
+  longitude         Float
+  description       String?
+  contactPerson     String?
+  contactPhone      String?
+  lastBoxChange     DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  isActive          Boolean           @default(true)
+  notes             String?
+  
+  // Relationships
+  boxChanges        BoxChange[]
+  routeStops        RouteStop[]
+  
+  @@map("locations")
+}
+
+model BoxChange {
+  id           String   @id @default(cuid())
+  locationId   String
+  changedAt    DateTime @default(now())
+  changedBy    String?  // User who made the change
+  notes        String?
+  boxCount     Int?     // Number of boxes changed
+  
+  // Relationships
+  location     Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  
+  @@map("box_changes")
+}
+
+model Route {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  isOptimized  Boolean     @default(false)
+  totalDistance Float?     // in kilometers
+  estimatedTime Int?       // in minutes
+  createdBy    String?
+  
+  // Relationships
+  stops        RouteStop[]
+  
+  @@map("routes")
+}
+
+model RouteStop {
+  id           String   @id @default(cuid())
+  routeId      String
+  locationId   String
+  stopOrder    Int
+  estimatedArrival DateTime?
+  completed    Boolean  @default(false)
+  completedAt  DateTime?
+  notes        String?
+  
+  // Relationships
+  route        Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  location     Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  
+  @@unique([routeId, stopOrder])
+  @@map("route_stops")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole @default(WORKER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  WORKER
+} 
