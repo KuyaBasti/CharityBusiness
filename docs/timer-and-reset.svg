@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 984" width="1000" height="984" role="img" aria-label="Lost Children Charity Platform, the timer and its reset. The locations table stores lastBoxChange, a DateTime that defaults to now, next to createdAt, updatedAt, an isActive soft-delete flag and plain columns; it has no status or elapsedDays column, and boxChanges is a Prisma relation, not a column. calculateElapsedDays derives three fields from lastBoxChange for every row a route returns: elapsedDays = floor((now minus lastBoxChange) / 86,400,000 ms), status = fresh below 7 days and overdue from 7 on, and lastChangeFormatted = Today at 0 days, 1 day ago at 1, N days ago from 2 to 6, 1 week ago from 7 to 13, and N days ago again from 14; the N weeks ago branch never runs. GET /api/locations returns all three for active rows, POST /api/locations returns a new row at 0, fresh, Today, and the route optimizer gets only elapsedDays and status from getLocationById. POST /api/locations/:id/mark-changed parses the JSON body (an empty body gives 500), validates it with the Zod markBoxChangeSchema whose three fields are optional (400 on failure), then runs one prisma.$transaction in markBoxesChanged with a single now: (a) location.update sets lastBoxChange and updatedAt to now, (b) boxChange.create appends a box_changes row with locationId, changedAt = now and the optional changedBy, notes and boxCount. Both commit or both roll back, so the timer never resets without a history row; an unknown id gives 404. The 200 response recomputes the derived fields: 0, fresh, Today. box_changes references locations.id with onDelete Cascade and is append-only; the timer never reads it. batchMarkBoxesChanged repeats the pair with updateMany and createMany but no route calls it.">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .b-red{fill:#ffebe9;stroke:#ff8182;stroke-width:1.5}
+    .b-planned{fill:none;stroke:#818b98;stroke-width:1.4;stroke-dasharray:5 4}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .wire{stroke:#59636e;stroke-width:1.4;fill:none}
+    .dot{fill:#59636e}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .b-red{fill:#3c1618;stroke:#f85149}
+      .b-planned{stroke:#9198a1}
+      .wire{stroke:#9198a1}
+      .dot{fill:#9198a1}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1000" height="984" rx="12"/>
+  <text class="title" x="32" y="48">Lost Children Charity Platform — the timer and its reset</text>
+  <text class="sub" x="32" y="74">No column stores a status: it is recomputed from lastBoxChange per request; one transaction resets the timer.</text>
+
+  <!-- ============ (L) THE RESET ============ -->
+  <rect class="group" x="24" y="96" width="304" height="720" rx="12"/>
+  <text class="glbl" x="40" y="120">THE RESET — ONE REQUEST</text>
+  <text class="elbl mono" x="40" y="140">POST /api/locations/:id/mark-changed</text>
+
+  <!-- step 1 -->
+  <rect class="b-blue" x="40" y="156" width="200" height="56" rx="10"/>
+  <text class="lbl mono" x="52" y="179">1 · request.json()</text>
+  <text class="note" x="52" y="199">an empty body throws here</text>
+  <line class="edge" x1="240" y1="184" x2="263" y2="184" marker-end="url(#ah)"/>
+  <rect class="b-red" x="264" y="162" width="48" height="44" rx="8"/>
+  <text class="lbl" x="288" y="189" text-anchor="middle">500</text>
+
+  <line class="edge" x1="140" y1="212" x2="140" y2="235" marker-end="url(#ah)"/>
+
+  <!-- step 2 -->
+  <rect class="b-blue" x="40" y="236" width="200" height="72" rx="10"/>
+  <text class="lbl" x="52" y="259">2 · Zod parse</text>
+  <text class="note mono" x="52" y="279">markBoxChangeSchema</text>
+  <text class="note" x="52" y="296">all three fields optional</text>
+  <line class="edge" x1="240" y1="272" x2="263" y2="272" marker-end="url(#ah)"/>
+  <rect class="b-red" x="264" y="250" width="48" height="44" rx="8"/>
+  <text class="lbl" x="288" y="277" text-anchor="middle">400</text>
+
+  <line class="edge" x1="140" y1="308" x2="140" y2="331" marker-end="url(#ah)"/>
+
+  <!-- step 3: the transaction -->
+  <rect class="b-blue" x="40" y="332" width="272" height="253" rx="10"/>
+  <text class="lbl mono" x="52" y="356">3 · prisma.$transaction</text>
+  <text class="note" x="52" y="375">in markBoxesChanged; one now for both</text>
+
+  <rect class="b-orange" x="52" y="388" width="248" height="70" rx="8"/>
+  <text class="lbl mono" x="64" y="411">(a) location.update</text>
+  <text class="note mono" x="64" y="430">lastBoxChange: now</text>
+  <text class="note mono" x="64" y="447">updatedAt: now</text>
+
+  <rect class="b-orange" x="52" y="468" width="248" height="70" rx="8"/>
+  <text class="lbl mono" x="64" y="491">(b) boxChange.create</text>
+  <text class="note mono" x="64" y="510">locationId: id, changedAt: now</text>
+  <text class="note mono" x="64" y="527">changedBy?, notes?, boxCount?</text>
+
+  <text class="note" x="52" y="557">both commit, or both roll back:</text>
+  <text class="note" x="52" y="574">the timer never resets without history</text>
+
+  <line class="edge" x1="140" y1="585" x2="140" y2="608" marker-end="url(#ah)"/>
+  <line class="edge" x1="288" y1="585" x2="288" y2="608" marker-end="url(#ah)"/>
+  <text class="elbl" x="280" y="601" text-anchor="end">unknown id</text>
+  <rect class="b-red" x="264" y="609" width="48" height="44" rx="8"/>
+  <text class="lbl" x="288" y="636" text-anchor="middle">404</text>
+
+  <!-- step 4 -->
+  <rect class="b-blue" x="40" y="609" width="200" height="72" rx="10"/>
+  <text class="lbl" x="52" y="632">4 · 200 response</text>
+  <text class="note mono" x="52" y="652">calculateElapsedDays</text>
+  <text class="note mono" x="52" y="669">→ 0, 'fresh', 'Today'</text>
+
+  <!-- the unrouted batch variant -->
+  <rect class="b-planned" x="40" y="705" width="272" height="72" rx="10"/>
+  <text class="lbl mono" x="52" y="728">batchMarkBoxesChanged</text>
+  <text class="note" x="52" y="748">same pair as updateMany + createMany</text>
+  <text class="note" x="52" y="765">implemented; no route calls it</text>
+
+  <!-- ============ (M) STORED ============ -->
+  <rect class="group" x="360" y="96" width="280" height="720" rx="12"/>
+  <text class="glbl" x="376" y="120">STORED — POSTGRESQL</text>
+  <text class="elbl mono" x="376" y="140">web/prisma/schema.prisma</text>
+
+  <!-- locations table -->
+  <rect class="b-gray" x="376" y="156" width="248" height="360" rx="10"/>
+  <text class="lbl mono" x="388" y="179">locations</text>
+  <text class="elbl mono" x="612" y="179" text-anchor="end">:13–33</text>
+  <line class="b-gray" x1="376" y1="192" x2="624" y2="192"/>
+  <text class="note mono" x="388" y="209">id · name · address</text>
+  <text class="note mono" x="388" y="233">latitude · longitude</text>
+  <text class="note mono" x="388" y="257">description? · notes?</text>
+  <text class="note mono" x="388" y="281">contactPerson? · contactPhone?</text>
+
+  <rect class="b-orange" x="382" y="290" width="236" height="50" rx="6"/>
+  <text class="lbl mono" x="392" y="311">lastBoxChange</text>
+  <text class="note mono" x="608" y="311" text-anchor="end">DateTime</text>
+  <text class="note" x="392" y="330">the timer; defaults to now()</text>
+
+  <text class="note mono" x="388" y="357">createdAt</text>
+  <text class="note mono" x="612" y="357" text-anchor="end">DateTime</text>
+
+  <rect class="b-orange" x="382" y="366" width="236" height="26" rx="6"/>
+  <text class="lbl mono" x="392" y="384">updatedAt</text>
+  <text class="note mono" x="608" y="384" text-anchor="end">@updatedAt</text>
+
+  <text class="note mono" x="388" y="412">isActive</text>
+  <text class="note mono" x="612" y="412" text-anchor="end">Boolean</text>
+  <text class="note" x="388" y="430">soft-delete flag; GET list: true only</text>
+
+  <rect class="b-planned" x="382" y="444" width="236" height="28" rx="6"/>
+  <text class="note" x="392" y="462">status, elapsedDays: no columns</text>
+  <rect class="b-planned" x="382" y="478" width="236" height="28" rx="6"/>
+  <text class="note" x="392" y="496">boxChanges: relation, no column</text>
+
+  <!-- foreign key -->
+  <line class="edge" x1="420" y1="556" x2="420" y2="518" marker-end="url(#ah)"/>
+  <text class="elbl" x="428" y="541">FK · onDelete: Cascade</text>
+
+  <!-- box_changes table -->
+  <rect class="b-gray" x="376" y="556" width="248" height="142" rx="10"/>
+  <text class="lbl mono" x="388" y="579">box_changes</text>
+  <text class="elbl mono" x="612" y="579" text-anchor="end">:35–47</text>
+  <line class="b-gray" x1="376" y1="592" x2="624" y2="592"/>
+  <text class="note mono" x="388" y="609">id · changedAt</text>
+  <text class="note mono" x="388" y="633">locationId → locations.id</text>
+  <text class="note mono" x="388" y="657">changedBy? · notes? · boxCount?</text>
+  <line class="b-gray" x1="376" y1="668" x2="624" y2="668"/>
+  <text class="note" x="388" y="685">append-only: no code edits a row</text>
+
+  <!-- the two writes -->
+  <path class="edge" d="M300,423 H344 V315 H375" marker-end="url(#ah)"/>
+  <path class="edge" d="M300,503 H344 V627 H375" marker-end="url(#ah)"/>
+
+  <!-- ============ (R) DERIVED ============ -->
+  <rect class="group" x="672" y="96" width="304" height="720" rx="12"/>
+  <text class="glbl" x="688" y="120">DERIVED — NEVER STORED</text>
+  <text class="elbl mono" x="688" y="140">web/src/lib/utils.ts</text>
+
+  <rect class="b-green" x="688" y="156" width="272" height="398" rx="10"/>
+  <text class="lbl mono" x="700" y="179">calculateElapsedDays</text>
+  <text class="elbl mono" x="948" y="179" text-anchor="end">:11–39</text>
+  <text class="note" x="700" y="197">runs for every row a route returns</text>
+
+  <rect class="b-green" x="700" y="208" width="248" height="66" rx="6"/>
+  <text class="lbl mono" x="712" y="230">elapsedDays</text>
+  <text class="note mono" x="712" y="249">floor(Δms / 86,400,000)</text>
+  <text class="note mono" x="712" y="266">Δms = now − lastBoxChange</text>
+
+  <rect class="b-green" x="700" y="282" width="248" height="66" rx="6"/>
+  <text class="lbl mono" x="712" y="304">status</text>
+  <text class="elbl mono" x="936" y="304" text-anchor="end">FRESH_THRESHOLD = 7</text>
+  <text class="note mono" x="712" y="323">elapsedDays &lt; 7</text>
+  <text class="note mono" x="712" y="340">? 'fresh' : 'overdue'</text>
+
+  <rect class="b-green" x="700" y="356" width="248" height="186" rx="6"/>
+  <text class="lbl mono" x="712" y="378">lastChangeFormatted</text>
+  <text class="elbl" x="712" y="398">elapsedDays</text>
+  <text class="elbl" x="796" y="398">status</text>
+  <text class="elbl" x="866" y="398">text</text>
+  <text class="note mono" x="712" y="418">0</text>
+  <text class="note mono" x="796" y="418">fresh</text>
+  <text class="note mono" x="866" y="418">Today</text>
+  <text class="note mono" x="712" y="440">1</text>
+  <text class="note mono" x="796" y="440">fresh</text>
+  <text class="note mono" x="866" y="440">1 day ago</text>
+  <text class="note mono" x="712" y="462">2–6</text>
+  <text class="note mono" x="796" y="462">fresh</text>
+  <text class="note mono" x="866" y="462">N days ago</text>
+  <line class="wire" x1="712" y1="471" x2="936" y2="471"/>
+  <text class="note mono" x="712" y="488">7–13</text>
+  <text class="note mono" x="796" y="488">overdue</text>
+  <text class="note mono" x="866" y="488">1 week ago</text>
+  <text class="note mono" x="712" y="510">≥ 14</text>
+  <text class="note mono" x="796" y="510">overdue</text>
+  <text class="note mono" x="866" y="510">N days ago</text>
+  <text class="elbl" x="712" y="532">the 'N weeks ago' branch never runs</text>
+
+  <!-- the read from the stored column -->
+  <line class="edge" x1="624" y1="315" x2="687" y2="315" marker-end="url(#ah)"/>
+  <text class="elbl" x="656" y="307" text-anchor="middle">read</text>
+
+  <!-- who returns the derived fields -->
+  <line class="edge" x1="824" y1="554" x2="824" y2="581" marker-end="url(#ah)"/>
+  <text class="elbl" x="832" y="572">returned by</text>
+
+  <rect class="b-blue" x="688" y="582" width="272" height="206" rx="10"/>
+  <text class="lbl mono" x="700" y="605">GET /api/locations</text>
+  <text class="note" x="700" y="625">getAllLocations: isActive rows only</text>
+  <text class="note" x="700" y="642">?overdue=true filters status in JS</text>
+  <line class="b-blue" x1="688" y1="656" x2="960" y2="656"/>
+  <text class="lbl mono" x="700" y="679">POST /api/locations</text>
+  <text class="note" x="700" y="699">createLocation: 0 · fresh · Today</text>
+  <line class="b-blue" x1="688" y1="714" x2="960" y2="714"/>
+  <text class="lbl mono" x="700" y="737">POST /api/routes/optimize</text>
+  <text class="note" x="700" y="757">getLocationById: no isActive filter</text>
+  <text class="note" x="700" y="774">elapsedDays + status only</text>
+
+  <!-- ============ legend + notes ============ -->
+  <rect class="b-gray" x="32" y="836" width="14" height="14" rx="3"/>
+  <text class="note" x="54" y="847">stored in PostgreSQL</text>
+  <rect class="b-orange" x="199" y="836" width="14" height="14" rx="3"/>
+  <text class="note" x="221" y="847">the reset's writes</text>
+  <rect class="b-green" x="354" y="836" width="14" height="14" rx="3"/>
+  <text class="note" x="376" y="847">derived per request</text>
+  <rect class="b-blue" x="515" y="836" width="14" height="14" rx="3"/>
+  <text class="note" x="537" y="847">API routes and steps</text>
+  <rect class="b-red" x="682" y="836" width="14" height="14" rx="3"/>
+  <text class="note" x="704" y="847">HTTP error</text>
+  <rect class="b-planned" x="790" y="836" width="14" height="14" rx="3"/>
+  <text class="note" x="812" y="847">no column, or no route</text>
+
+  <circle class="dot" cx="38" cy="874" r="2.5"/>
+  <text class="note" x="50" y="878">A new location starts with lastBoxChange = new Date() and no box_changes row; every reset after that writes both, stamped with one now.</text>
+  <circle class="dot" cx="38" cy="896" r="2.5"/>
+  <text class="note" x="50" y="900">The timer never reads box_changes: GET /api/locations attaches each row's newest entry; getLocationById loads 10 that optimize drops.</text>
+  <circle class="dot" cx="38" cy="918" r="2.5"/>
+  <text class="note" x="50" y="922">The reset's response is the updated locations row plus its derived fields; the new box_changes row is not returned.</text>
+  <circle class="dot" cx="38" cy="940" r="2.5"/>
+  <text class="note" x="50" y="944">Only deleteLocation sets isActive = false, and no route calls it; mark-changed resets a row whether it is active or not.</text>
+  <circle class="dot" cx="38" cy="962" r="2.5"/>
+  <text class="note" x="50" y="966">'warning' and WARNING_THRESHOLD = 14 are declared in types/index.ts, but no code path produces 'warning'.</text>
+</svg>

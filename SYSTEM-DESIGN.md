@@ -7,10 +7,11 @@
 > **overdue**, *"3 days ago"*) is recomputed from that one timestamp on every
 > read. Nothing stores a status, so nothing can get out of sync. A worker's tap
 > resets the clock and appends one immutable history row in a single
-> transaction; the traveling-salesman problem of visiting the stale boxes is
-> handed, whole, to **Google's Directions API**. Around this working core stand
+> transaction; the traveling-salesman problem of visiting the boxes a worker
+> picks (meant to be the overdue ones) is handed, whole, to **Google's Directions
+> API**. Around this working core stand
 > the outlines of the platform it was meant to become — an Android client, a
-> web dashboard, an auth layer — present as directories, dependencies, and
+> web dashboard, an auth layer — present as build config, dependencies, and
 > schema, but not yet as code.
 
 This document is the developer-facing map of the whole system — every component
@@ -21,100 +22,41 @@ per-layer detail, building, and running.
 
 ## End-to-end flowchart
 
-```mermaid
-flowchart TD
-    %% ===== Clients =====
-    subgraph CLIENTS["Clients"]
-        http["any HTTP client<br/>(how the API is driven today)"]:::caller
-        droid["Android app — Kotlin + Compose<br/>Retrofit, Room, Maps declared in Gradle<br/>zero source files"]:::planned
-        webui["web dashboard — Tailwind configured<br/>analytics / auth / locations / routes<br/>directories all empty"]:::planned
-    end
-
-    %% ===== API =====
-    subgraph API["API layer — web/src/app/api, Next.js 14 App Router route handlers"]
-        list["GET + POST /api/locations<br/>zod createLocationSchema<br/>lat ±90, lng ±180"]:::stage
-        mark["POST /api/locations/:id/mark-changed<br/>zod markBoxChangeSchema<br/>all fields optional"]:::stage
-        opt["POST /api/routes/optimize<br/>zod optimizeRouteSchema<br/>min 1 location id"]:::stage
-    end
-
-    %% ===== Lib =====
-    subgraph LIB["Business logic — web/src/lib"]
-        ctrl["LocationController<br/>getAll / create / markBoxesChanged<br/>+ update, delete, batch, analytics — unwired"]:::comm
-        util["utils.ts — elapsed-day math,<br/>Google Maps wrappers, handleApiError"]:::comm
-        db["db.ts — PrismaClient singleton<br/>global-cached outside production"]:::comm
-    end
-
-    %% ===== Store =====
-    subgraph STORE["Data store — PostgreSQL via Prisma 5"]
-        loc[("locations<br/>lastBoxChange — the timer<br/>isActive soft-delete flag")]:::cache
-        hist[("box_changes<br/>append-only audit trail<br/>cascade-deletes with location")]:::cache
-        dorm[("routes / route_stops / users<br/>modeled, never written")]:::planned
-    end
-
-    %% ===== External =====
-    subgraph EXT["External service"]
-        gmap["Google Maps Directions API<br/>waypoints = optimize:true<br/>solves the visiting order"]:::mock
-    end
-
-    http --> list
-    http --> mark
-    http --> opt
-    droid -. "Retrofit calls<br/>never written" .-> list
-    webui -. "pages<br/>never written" .-> list
-
-    list --> ctrl
-    mark --> ctrl
-    opt --> ctrl
-    opt -- "optimizeRoute(origin, addresses)" --> util
-    ctrl -- "derives status via" --> util
-    ctrl --> db
-    util -- "directions — origin, waypoints,<br/>destination = origin, imperial" --> gmap
-    gmap -- "routes[0]: waypoint_order + legs" --> util
-    db --> loc
-    db --> hist
-    dorm -.-> db
-
-    %% ===== Styles =====
-    classDef caller fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A,stroke-width:2px;
-    classDef stage fill:#E6F1FB,stroke:#185FA5,color:#0C447C;
-    classDef cache fill:#E1F5EE,stroke:#0F6E56,color:#085041,stroke-width:2px;
-    classDef comm fill:#EEEDFE,stroke:#534AB7,color:#3C3489,stroke-width:2px;
-    classDef mock fill:#FDEBEC,stroke:#B3261E,color:#8C1D18;
-    classDef data fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A;
-    classDef planned fill:#F6F6F4,stroke:#888780,color:#5F5E5A,stroke-dasharray:5 4;
-```
-
-**Legend** — ⬜ clients · 🟦 API route handlers · 🟪 business logic ·
-🟩 live tables · 🟥 external service ·
-◌ dashed = declared but not built (the Android app, the web UI, the dormant
-tables, and all three dashed arrows).
+<p align="center"><img src="docs/system-design-flowchart.svg" alt="End-to-end flowchart of the Lost Children Charity Platform. Clients: any HTTP client drives the API today; a planned Android app (Kotlin, Compose, Retrofit, Room and Maps declared in Gradle, zero Kotlin files, API_BASE_URL pointing at localhost:3000/api) and a planned web dashboard (Tailwind config, no page.tsx or layout.tsx) are dashed. API layer: four Next.js 14 route handlers in web/src/app/api, GET /api/locations (?overdue=true for overdue only, no body and no Zod schema), POST /api/locations, POST /api/locations/:id/mark-changed and POST /api/routes/optimize. Each POST body goes through its Zod schema, and a failed parse returns 400: createLocationSchema (name, address, lat ±90 and lng ±180 required), markBoxChangeSchema (every field optional, boxCount a positive integer) and optimizeRouteSchema (currentLocation plus at least one location id, returnToStart defaults to true). The handlers call LocationController: getAllLocations or getOverdueLocations, createLocation, markBoxesChanged, and getLocationById once per id in parallel; 5 of its 9 methods are reached by a route, while updateLocation, deleteLocation, batchMarkBoxesChanged and getLocationAnalytics are not. The controller uses utils.ts (calculateElapsedDays per row, under 7 days fresh, else overdue; isValidCoordinates on create) and the PrismaClient singleton from db.ts, which runs findMany, findUnique, create and update on locations (the lastBoxChange timer and the isActive soft-delete flag) and creates box_changes rows in the same $transaction as the timer reset; the routes, route_stops and users tables are never queried. Each route handler maps any other error through handleApiError in utils.ts to 409, 404 or 500. The optimize route also calls optimizeRoute in utils.ts, which sends the Google Maps Directions API a directions request with origin and destination both set to currentLocation, the addresses as waypoints, optimize true, driving and imperial units, and gets back routes[0] with waypoint_order and legs." width="100%"></p>
 
 ---
 
 ## How to read it: the three ideas that matter
 
-1. **Status is derived, never stored.** The only mutable state in the whole
-   system is `locations.lastBoxChange` (plus the rows that history appends).
+1. **Status is derived, never stored.** The only state the timer loop
+   mutates is `locations.lastBoxChange` (plus `updatedAt` and the rows that
+   history appends); apart from creating locations, no route writes anything
+   else.
    `elapsedDays`, the `fresh`/`overdue` status, and the human string
    *"1 week ago"* are computed by `calculateElapsedDays` on every read —
    `floor((now − lastBoxChange) / 86,400,000 ms)`, compared against a 7-day
    threshold. That means a box drifts into `overdue` with no cron job, no
    background worker, and no denormalized column to forget to update; the
    read path *is* the state machine. The price is that every consumer gets
-   status only by asking, and "overdue" queries can't be pushed into SQL —
+   status only by asking, and "overdue" queries aren't pushed into SQL —
    `getOverdueLocations` fetches everything and filters in JS.
 
 2. **One Next.js app is the whole backend — and the routes are the real
-   bottleneck of what exists.** Each route file follows the same discipline:
+   bottleneck of what exists.** Each POST handler follows the same discipline:
    a Zod schema at the top, `schema.parse(body)`, a call into
-   `LocationController`, a `{ success, data, message }` envelope, and a
-   two-tier error path (Zod issues → 400; everything else → `handleApiError`,
-   which pattern-matches Prisma's message strings into 409/404/500). The
+   `LocationController`, a `{ success, data, message }` envelope, and an
+   error path of Zod issues → 400 and everything else → `handleApiError`,
+   which pattern-matches Prisma's message strings into 409/404/500. The
+   optimize route adds two outcomes of its own: 400 `NO_VALID_LOCATIONS` when
+   none of the ids match a row, and 503 `ROUTE_OPTIMIZATION_FAILED` when the
+   Google step throws. `GET /api/locations` has no schema and returns `{ success, data, count }`. The
    controller beneath is *wider* than the API above it — update, soft-delete,
    batch mark-changed, and analytics are fully implemented and unreachable —
    so the honest system boundary is the three route files, not the
-   controller's method list. The `backend/` directory tree (an Express-era
-   plan) lost to this design and was left as five empty folders.
+   controller's method list. The `backend/` directory tree (the first
+   README's "shared backend (if separate)") lost to this design and was left
+   as five empty folders, which git never tracked, so the repository has no
+   `backend/` at all.
 
 3. **The hard problems are outsourced or postponed.** Route ordering goes to
    Google — the client library turns `optimize: true` into the
@@ -133,29 +75,7 @@ tables, and all three dashed arrows).
 `POST /api/routes/optimize` is the most involved flow in the system: the only
 endpoint that touches the database *and* the outside world.
 
-```mermaid
-sequenceDiagram
-    participant C as client
-    participant R as optimize/route.ts
-    participant L as LocationController
-    participant P as PostgreSQL via Prisma
-    participant G as Google Directions API
-
-    C->>R: POST currentLocation + locationIds + returnToStart
-    R->>R: zod parse — min 1 id, returnToStart defaults true
-    loop one findUnique per id — fired in parallel via Promise.all
-        R->>L: getLocationById(id)
-        L->>P: findUnique + last 10 box_changes
-        P-->>L: location row or null
-    end
-    R->>R: drop nulls — 0 valid → 400 NO_VALID_LOCATIONS
-    R->>G: directions(origin = currentLocation,<br/>destination = currentLocation,<br/>waypoints = optimize:true + addresses,<br/>mode driving, units imperial)
-    G-->>R: routes[0] — waypoint_order + legs
-    R->>R: reorder addresses by waypoint_order
-    R->>R: totals: sum parseFloat(leg.distance.text)<br/>+ parseInt(leg.duration.text)
-    R->>R: map addresses back to locations<br/>by exact string equality
-    R-->>C: optimizedOrder + totalDistance mi +<br/>totalDuration min + routeSummary
-```
+<p align="center"><img src="docs/optimize-call.svg" alt="Sequence diagram of one POST /api/routes/optimize call across the client, optimize/route.ts, LocationController, PostgreSQL via Prisma 5, optimizeRoute() in lib/utils.ts and the Google Maps Directions API. The client posts currentLocation, locationIds and an optional returnToStart. The route validates the body with zod (400 VALIDATION_ERROR on failure), then loads every id at once with Promise.all through getLocationById, a Prisma findUnique with the last 10 box_changes that returns the row plus elapsedDays and status, or null. It drops ids with no row (400 NO_VALID_LOCATIONS if none match) and calls optimizeRoute(currentLocation, addresses); lat and lng are not sent. optimizeRoute calls directions() with origin and destination both set to currentLocation (returnToStart is ignored) and waypoints=optimize:true, driving, imperial; it gets routes[0] with waypoint_order and legs, reorders the addresses and sums every leg from its display text, so 528 ft counts as 528 mi and 1 hour 12 mins as 1 min. If that step throws, the route answers 503 ROUTE_OPTIMIZATION_FAILED. The route maps addresses back to locations by exact string equality, first match wins, builds the Current Location → A → B summary (ending in Current Location only if returnToStart) and returns 200 with success, a message and data: optimizedOrder, totalDistance in miles, totalDuration in minutes, routeSummary, estimatedTime and a fixed savings text. Any other error, such as an invalid JSON body or a database failure, becomes 500 INTERNAL_ERROR via handleApiError." width="100%"></p>
 
 Things worth noticing:
 
@@ -174,24 +94,7 @@ Things worth noticing:
 
 ## Deep dive 2 — the timer, and the transaction that resets it
 
-```text
-   locations row (stored)                derived on EVERY read (never stored)
-   ┌───────────────────────────┐         ┌─────────────────────────────────────┐
-   │ lastBoxChange ────────────┼────────►│ elapsedDays = floor(Δms / 86.4M)    │
-   │   the single load-bearing │         │ status      = days < 7 ? 'fresh'    │
-   │   timestamp               │         │                        : 'overdue'  │
-   │ isActive (soft delete)    │         │ formatted   = "Today" / "1 day ago" │
-   │ box_changes ──────────────┼──┐      │             / "3 days ago"          │
-   └───────────────────────────┘  │      │             / "1 week ago"          │
-                                  │      └─────────────────────────────────────┘
-                                  ▼
-   POST /api/locations/:id/mark-changed
-   └─ prisma.$transaction([
-        location.update  { lastBoxChange: now, updatedAt: now },
-        boxChange.create { locationId, changedAt: now,
-                           changedBy?, notes?, boxCount? }
-      ])   ← both or neither: the timer never resets without a history row
-```
+<p align="center"><img src="docs/timer-and-reset.svg" alt="The timer and its reset, in three panels. Stored in PostgreSQL (web/prisma/schema.prisma): the locations table holds lastBoxChange, a DateTime defaulting to now() that is the timer, beside createdAt, updatedAt, an isActive soft-delete flag (the GET list returns active rows only) and plain columns; it has no status or elapsedDays column, and boxChanges is a relation, not a column. box_changes (id, changedAt, locationId referencing locations.id with onDelete Cascade, optional changedBy, notes and boxCount) is append-only. Derived, never stored (web/src/lib/utils.ts): calculateElapsedDays runs for every row a route returns and gives elapsedDays = floor(Δms / 86,400,000), status fresh below FRESH_THRESHOLD 7 and overdue otherwise, and lastChangeFormatted: Today at 0, 1 day ago at 1, N days ago for 2–6, 1 week ago for 7–13 and N days ago from 14; the N weeks ago branch never runs. GET /api/locations returns all three fields for active rows, POST /api/locations returns 0, fresh, Today, and POST /api/routes/optimize gets only elapsedDays and status from getLocationById, which has no isActive filter. The reset, one request to POST /api/locations/:id/mark-changed: request.json() (an empty body throws, 500), the Zod markBoxChangeSchema with all three fields optional (400), then one prisma.$transaction in markBoxesChanged with a single now, where location.update sets lastBoxChange and updatedAt and boxChange.create appends a row with locationId, changedAt and the optional fields. Both commit or both roll back, and an unknown id gives 404. The 200 response re-derives 0, fresh, Today. batchMarkBoxesChanged repeats the pair with updateMany and createMany, but no route calls it. Notes: a new location starts with no box_changes row; the timer never reads box_changes; the reset response does not return the new history row; only the unrouted deleteLocation sets isActive to false, and mark-changed resets a row whether it is active or not; warning and WARNING_THRESHOLD = 14 are declared in types/index.ts but no code path produces warning." width="100%"></p>
 
 - **The transaction is the contract.** The timer column and the audit trail
   are updated atomically, so `lastBoxChange` always has a matching
@@ -203,7 +106,7 @@ Things worth noticing:
   includes only the single most recent `BoxChange` per location
   (`take: 1`, newest first); `getLocationById` — used by the optimizer —
   pulls the last 10.
-- **The formatted string has a gap by design.** Days 7–13 render as weeks
+- **The formatted string has a gap.** Days 7–13 render as weeks
   ("1 week ago") and everything from 14 up falls back to raw
   "`N` days ago" — the week formatting only ever produces "1 week ago"
   because `weeks = floor(days/7)` is computed under a `days < 14` guard.
@@ -217,17 +120,17 @@ Things worth noticing:
 | Prisma schema — 5 models + `UserRole` | Data | ✅ implemented here | [schema.prisma](web/prisma/schema.prisma) |
 | Prisma client singleton | Data | ✅ implemented here (standard pattern) | [db.ts](web/src/lib/db.ts) |
 | Domain + API types, `TIME_THRESHOLDS` | Types | ✅ implemented here | [types/index.ts](web/src/types/index.ts) |
-| `LocationController` — all business logic | Logic | ✅ implemented (4 of 9 methods unwired) | [locationController.ts](web/src/lib/controllers/locationController.ts) |
+| `LocationController` — location CRUD, timer reset, analytics | Logic | ✅ implemented (4 of 9 methods unwired) | [locationController.ts](web/src/lib/controllers/locationController.ts) |
 | Elapsed-time math, Maps wrappers, error model | Logic | ✅ implemented (5 helpers never called) | [utils.ts](web/src/lib/utils.ts) |
 | Locations list/create route | API | ✅ implemented here | [locations/route.ts](web/src/app/api/locations/route.ts) |
 | Mark-changed route | API | ✅ implemented here | [mark-changed/route.ts](web/src/app/api/locations/%5Bid%5D/mark-changed/route.ts) |
 | Route-optimize route | API | ✅ implemented here | [optimize/route.ts](web/src/app/api/routes/optimize/route.ts) |
-| Next/Tailwind/TS configuration | Build | ✅ hand-written config | [next.config.js](web/next.config.js) · [tailwind.config.js](web/tailwind.config.js) · [tsconfig.json](web/tsconfig.json) |
+| Next/Tailwind/TS configuration | Build | ✅ hand-written config | [next.config.js](web/next.config.js) · [tailwind.config.js](web/tailwind.config.js) · tsconfig.json (local only, not in git) |
 | Security policy | Docs | ✅ written here (broader than the code) | [SECURITY.md](docs/SECURITY.md) |
-| Google Maps services client, Prisma, Zod, date-fns | Vendored | third-party npm | [package.json](web/package.json) |
+| Google Maps services client, Prisma, Zod, date-fns | Dependencies | third-party npm | [package.json](web/package.json) |
 | Android build config + manifest | Mobile | ⬜ config only — zero Kotlin | [android/](android/) |
-| Web UI (pages, components, hooks, styles) | Frontend | ⬜ empty directories | [web/src/](web/src) |
-| Express-style backend | — | ⬜ five empty directories | [backend/](backend/) |
+| Web UI (pages, components, hooks, styles) | Frontend | ⬜ empty local directories, not in git | [web/src/](web/src) |
+| Separate `backend/` (first-layout plan) | — | ⬜ five empty local directories, not in git | — |
 | Auth (`next-auth`, `User` model, secret) | — | ⬜ installed, modeled, unwired | [package.json](web/package.json) · [schema.prisma](web/prisma/schema.prisma) |
 
 ---
@@ -240,7 +143,7 @@ Things worth noticing:
 | 14 days | `WARNING_THRESHOLD` — defined, exported, never read; `'warning'` is unreachable |
 | 1 / 10 | `BoxChange` rows fetched per location: listing (`take: 1`) vs detail (`take: 10`) |
 | 3 | HTTP endpoints (4 handlers: GET+POST locations, POST mark-changed, POST optimize) |
-| 976 | lines of TypeScript in `web/src` — the entire implemented platform |
+| 983 | lines of TypeScript in `web/src` — the entire implemented platform |
 | 5 + 1 | Prisma models + enum; 2 tables are ever written (`locations`, `box_changes`) |
 | ±90 / ±180 | Zod bounds on latitude / longitude, re-checked by `isValidCoordinates` |
 | 3,959 mi | Earth radius in the haversine fallback (implemented, never called) |
@@ -249,7 +152,6 @@ Things worth noticing:
 | 3000 | dev-server port; the Android template points `API_BASE_URL` at `localhost:3000/api` |
 | 24 → 34 | Android min → compile/target SDK (Kotlin 1.9.10, Compose 1.5.4, AGP 8.1.2) |
 | 0 | Kotlin files, web pages, tests, and auth checks |
-| 27,780 | lines in `FILELIST.txt`, the stray recursive directory listing at the repo root |
 
 ---
 
@@ -258,9 +160,10 @@ Things worth noticing:
 **There are no tests.** No test directory, no test runner in
 [package.json](web/package.json) (the closest is `type-check`, a bare
 `tsc --noEmit`), no CI configuration, and no seed data — `npm run db:seed`
-points at a `prisma/seed.ts` that does not exist. The `web/.next/` directory
-contains development-server output, which is the only executable evidence in
-the tree that the API was actually run; validation was evidently manual,
+points at a `prisma/seed.ts` that does not exist. A local, gitignored
+`web/.next/` directory (not in the repository) holds development-server
+output, the only executable evidence that the API was actually run;
+validation was evidently manual,
 against a hand-populated database, in the style of the example request bodies
 that the route files carry in their doc comments. The sharpest consequences:
 the text-parsing bugs in the optimizer's totals and the empty-body 500 on
@@ -292,19 +195,23 @@ have caught.
   statement of intent, but it means the deployed system cannot edit or delete
   a location, and dead surface (plus `calculateDrivingDistances`, imported
   and unused) reads as live.
-- **Secrets hygiene preached, not practiced** — [SECURITY.md](docs/SECURITY.md)
-  and a thorough `.gitignore` both target exactly the mistake the repo ships:
-  `web/.env` with a live-looking Maps key, NextAuth secret, and database
-  password. Rotate before any deployment.
+- **Secrets hygiene held in git** — [SECURITY.md](docs/SECURITY.md) and a
+  thorough `.gitignore` kept `web/.env` out of every commit; the remaining
+  risk is the local, gitignored copy, which holds a live-looking Maps key,
+  NextAuth secret, and database password. Rotate them if that folder was
+  ever shared, and before any deployment.
 - **Scaffold as roadmap** — the empty `backend/` tree, the source-less Android
   Gradle build (which cannot compile: no `settings.gradle`, no wrapper, no
   `MainActivity`, no `res/`), the empty UI directories, and the dormant
   `Route`/`RouteStop`/`User` tables are all *declared intent*. They document
-  the plan honestly, at the cost of a repo where most directories are
+  the plan honestly, at the cost of a working copy where most directories are
   load-bearing only in spirit — including the literal `{app/…}` directories
-  left by an unbalanced-brace `mkdir -p`, whose names (plus two real empty
-  package dirs, `ui/locations` and `ui/toggle`, under `java/com/charity/`)
-  are the fullest surviving spec of the Android package layout.
+  left by a comma-less outer brace in a `mkdir -p` (kept as literal text),
+  whose names (plus two real empty package dirs, `ui/locations` and
+  `ui/toggle`, under `java/com/charity/`) are the fullest spec of the
+  Android package layout. Being empty, none of
+  those directories is tracked by git, so a clone of the repository has none
+  of them.
 
 ---
 

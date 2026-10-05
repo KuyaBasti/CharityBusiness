@@ -1,0 +1,222 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1702" width="1000" height="1702" role="img" aria-label="Lost Children Charity Platform, one POST /api/routes/optimize call as a sequence: the client posts currentLocation, locationIds and returnToStart; the route handler validates with zod (400 VALIDATION_ERROR), loads every id at once through LocationController.getLocationById and Prisma findUnique with the last 10 box_changes, drops unknown ids (400 NO_VALID_LOCATIONS), then calls optimizeRoute in lib/utils.ts, which asks the Google Maps Directions API for a loop from currentLocation back to itself with optimize:true waypoints, reorders the addresses by waypoint_order and sums distance and duration from each leg's display text; any failure there becomes 503 ROUTE_OPTIMIZATION_FAILED; the route maps addresses back to locations by exact string equality, builds the route summary (returnToStart only adds the final Current Location) and returns a 200 JSON envelope whose savings field is fixed text; any other thrown error, such as an invalid JSON body or a database failure, becomes 500 INTERNAL_ERROR via handleApiError">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .b-red{fill:#ffebe9;stroke:#ff8182;stroke-width:1.5}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .b-red{fill:#3c1618;stroke:#f85149}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1000" height="1702" rx="12"/>
+  <text class="title" x="32" y="48">Lost Children Charity Platform — one optimize call, end to end</text>
+  <text class="sub" x="32" y="74">POST /api/routes/optimize: load each stop from PostgreSQL, let Google Maps order them, map the order back</text>
+
+  <!-- legend -->
+  <g>
+    <rect class="b-orange" x="32" y="94" width="12" height="12" rx="3"/>
+    <text class="elbl" x="50" y="104">client</text>
+    <rect class="b-blue" x="101.9" y="94" width="12" height="12" rx="3"/>
+    <text class="elbl" x="119.9" y="104">route handler</text>
+    <rect class="b-green" x="214.76500000000001" y="94" width="12" height="12" rx="3"/>
+    <text class="elbl" x="232.76500000000001" y="104">lib/ code</text>
+    <rect class="b-gray" x="301.54875000000004" y="94" width="12" height="12" rx="3"/>
+    <text class="elbl" x="319.54875000000004" y="104">database</text>
+    <rect class="b-purple" x="391.76125" y="94" width="12" height="12" rx="3"/>
+    <text class="elbl" x="409.76125" y="104">external API</text>
+    <rect class="b-red" x="497.1025" y="94" width="12" height="12" rx="3"/>
+    <text class="elbl" x="515.1025" y="104">error response</text>
+    <line class="edge" x1="32" y1="122" x2="62" y2="122" marker-end="url(#ah)"/>
+    <text class="elbl" x="70" y="126">call</text>
+    <line class="edge-dash" x1="110.76875" y1="122" x2="140.76875" y2="122" marker-end="url(#ah)"/>
+    <text class="elbl" x="148.76875" y="126">return / response</text>
+    <circle class="b-blue" cx="272.19" cy="122" r="8"/>
+    <text class="elbl" x="286.19" y="126">step number, colored by who acts</text>
+  </g>
+
+  <!-- lifelines -->
+  <g>
+    <line class="group" x1="70" y1="200" x2="70" y2="1688"/>
+    <line class="group" x1="300" y1="200" x2="300" y2="1688"/>
+    <line class="group" x1="462" y1="200" x2="462" y2="1688"/>
+    <line class="group" x1="622" y1="200" x2="622" y2="1688"/>
+    <line class="group" x1="772" y1="200" x2="772" y2="1688"/>
+    <line class="group" x1="922" y1="200" x2="922" y2="1688"/>
+  </g>
+
+  <!-- participants -->
+  <g>
+    <rect class="b-orange" x="14" y="144" width="112" height="56" rx="10"/>
+    <text class="lbl" x="70" y="167" text-anchor="middle">client</text>
+    <text class="note" x="70" y="186" text-anchor="middle">any HTTP client</text>
+    <rect class="b-blue" x="222" y="144" width="156" height="56" rx="10"/>
+    <text class="lbl" x="300" y="167" text-anchor="middle">route handler</text>
+    <text class="note mono" x="300" y="186" text-anchor="middle">optimize/route.ts</text>
+    <rect class="b-green" x="391" y="144" width="142" height="56" rx="10"/>
+    <text class="lbl" x="462" y="167" text-anchor="middle">controller</text>
+    <text class="note" x="462" y="186" text-anchor="middle">LocationController</text>
+    <rect class="b-gray" x="557" y="144" width="130" height="56" rx="10"/>
+    <text class="lbl" x="622" y="167" text-anchor="middle">PostgreSQL</text>
+    <text class="note" x="622" y="186" text-anchor="middle">via Prisma 5</text>
+    <rect class="b-green" x="702" y="144" width="140" height="56" rx="10"/>
+    <text class="lbl" x="772" y="167" text-anchor="middle">optimizeRoute()</text>
+    <text class="note mono" x="772" y="186" text-anchor="middle">lib/utils.ts</text>
+    <rect class="b-purple" x="857" y="144" width="130" height="56" rx="10"/>
+    <text class="lbl" x="922" y="167" text-anchor="middle">Google Maps</text>
+    <text class="note" x="922" y="186" text-anchor="middle">Directions API</text>
+  </g>
+
+  <!-- Promise.all fragment around steps 3-6 -->
+  <g>
+    <rect class="group" x="192" y="460" width="510" height="234" rx="8"/>
+    <rect class="b-gray" x="192" y="460" width="280.8" height="26" rx="8"/>
+    <text class="glbl" x="204" y="477">for each id — all at once (Promise.all)</text>
+  </g>
+
+  <!-- backing rects so labels never sit on a lifeline -->
+  <g>
+    <rect class="bg" x="408.7" y="869" width="266.5" height="17"/>
+    <rect class="bg" x="385.8" y="1199" width="288.3" height="17"/>
+    <rect class="bg" x="399.1" y="1227" width="261.8" height="17"/>
+  </g>
+
+  <!-- steps, top to bottom -->
+  <g>
+    <text class="note mono" x="187" y="234" text-anchor="middle">POST /api/routes/optimize</text>
+    <text class="note" x="187" y="250" text-anchor="middle">{ currentLocation, locationIds[ ],</text>
+    <text class="note" x="187" y="266" text-anchor="middle">returnToStart? }</text>
+    <circle class="b-orange" cx="70" cy="286" r="12"/>
+    <text class="lbl" x="70" y="291" text-anchor="middle">1</text>
+    <line class="edge" x1="82" y1="286" x2="299" y2="286" marker-end="url(#ah)"/>
+    <rect class="b-blue" x="278.0" y="310" width="367.3" height="66" rx="8"/>
+    <circle class="b-blue" cx="300" cy="343" r="12"/>
+    <text class="lbl" x="300" y="348" text-anchor="middle">2</text>
+    <text class="lbl" x="322" y="333">validate the body with zod</text>
+    <text class="note" x="322" y="351">currentLocation: non-empty string</text>
+    <text class="note" x="322" y="367">locationIds: at least 1 · returnToStart: defaults to true</text>
+    <rect class="b-red" x="14" y="394" width="232.9" height="44" rx="8"/>
+    <text class="lbl" x="28" y="413">400 <tspan class="note mono">VALIDATION_ERROR</tspan></text>
+    <text class="note" x="28" y="430">zod parse failed — issues in details</text>
+    <line class="edge-dash" x1="300" y1="416" x2="248.92875" y2="416" marker-end="url(#ah)"/>
+    <text class="note" x="387" y="516" text-anchor="middle">getLocationById(id)</text>
+    <circle class="b-blue" cx="300" cy="526" r="12"/>
+    <text class="lbl" x="300" y="531" text-anchor="middle">3</text>
+    <line class="edge" x1="312" y1="526" x2="461" y2="526" marker-end="url(#ah)"/>
+    <text class="note" x="548" y="560" text-anchor="middle">findUnique({ id })</text>
+    <text class="note" x="548" y="576" text-anchor="middle">+ last 10 box_changes</text>
+    <circle class="b-green" cx="462" cy="586" r="12"/>
+    <text class="lbl" x="462" y="591" text-anchor="middle">4</text>
+    <line class="edge" x1="474" y1="586" x2="621" y2="586" marker-end="url(#ah)"/>
+    <text class="note" x="536" y="618" text-anchor="middle">row or null</text>
+    <circle class="b-gray" cx="622" cy="628" r="12"/>
+    <text class="lbl" x="622" y="633" text-anchor="middle">5</text>
+    <line class="edge-dash" x1="610" y1="628" x2="463" y2="628" marker-end="url(#ah)"/>
+    <text class="note" x="375" y="650" text-anchor="middle">row + elapsedDays</text>
+    <text class="note" x="375" y="666" text-anchor="middle">+ status, or null</text>
+    <circle class="b-green" cx="462" cy="676" r="12"/>
+    <text class="lbl" x="462" y="681" text-anchor="middle">6</text>
+    <line class="edge-dash" x1="450" y1="676" x2="301" y2="676" marker-end="url(#ah)"/>
+    <rect class="b-blue" x="278.0" y="714" width="355.6" height="66" rx="8"/>
+    <circle class="b-blue" cx="300" cy="747" r="12"/>
+    <text class="lbl" x="300" y="752" text-anchor="middle">7</text>
+    <text class="lbl" x="322" y="737">drop the ids that found no row</text>
+    <text class="note" x="322" y="755">nulls filtered out — unknown ids skipped silently</text>
+    <text class="note" x="322" y="771">addresses = their address strings (lat/lng not sent)</text>
+    <rect class="b-red" x="14" y="798" width="192.0" height="44" rx="8"/>
+    <text class="lbl" x="28" y="817">400 <tspan class="note mono">NO_VALID_LOCATIONS</tspan></text>
+    <text class="note" x="28" y="834">no id matched a row</text>
+    <line class="edge-dash" x1="300" y1="820" x2="207.97875" y2="820" marker-end="url(#ah)"/>
+    <text class="note" x="542" y="882" text-anchor="middle">optimizeRoute(currentLocation, addresses)</text>
+    <circle class="b-blue" cx="300" cy="892" r="12"/>
+    <text class="lbl" x="300" y="897" text-anchor="middle">8</text>
+    <line class="edge" x1="312" y1="892" x2="771" y2="892" marker-end="url(#ah)"/>
+    <rect class="b-green" x="371.0" y="916" width="423.0" height="66" rx="8"/>
+    <circle class="b-green" cx="772" cy="949" r="12"/>
+    <text class="lbl" x="772" y="954" text-anchor="middle">9</text>
+    <text class="lbl" x="750" y="939" text-anchor="end">googleMapsClient.directions()</text>
+    <text class="note" x="750" y="957" text-anchor="end">origin = destination = currentLocation — returnToStart ignored</text>
+    <text class="note" x="750" y="973" text-anchor="end">waypoints=optimize:true|address|… · driving · imperial</text>
+    <text class="note" x="858" y="940" text-anchor="middle">GET directions/json</text>
+    <line class="edge" x1="794" y1="949" x2="921" y2="949" marker-end="url(#ah)"/>
+    <text class="note" x="841" y="990" text-anchor="middle">routes[0]:</text>
+    <text class="note" x="841" y="1006" text-anchor="middle">waypoint_order + legs</text>
+    <circle class="b-purple" cx="922" cy="1022" r="12"/>
+    <text class="lbl" x="922" y="1027" text-anchor="middle">10</text>
+    <line class="edge-dash" x1="910" y1="1022" x2="773" y2="1022" marker-end="url(#ah)"/>
+    <rect class="b-green" x="435.6" y="1046" width="358.4" height="50" rx="8"/>
+    <circle class="b-green" cx="772" cy="1071" r="12"/>
+    <text class="lbl" x="772" y="1076" text-anchor="middle">11</text>
+    <text class="lbl" x="750" y="1069" text-anchor="end">reorder the addresses</text>
+    <text class="note" x="750" y="1087" text-anchor="end">optimizedOrder[k] = addresses[waypoint_order[k]]</text>
+    <rect class="b-green" x="341.7" y="1112" width="452.3" height="66" rx="8"/>
+    <circle class="b-green" cx="772" cy="1145" r="12"/>
+    <text class="lbl" x="772" y="1150" text-anchor="middle">12</text>
+    <text class="lbl" x="750" y="1135" text-anchor="end">sum every leg, parsed from display text</text>
+    <text class="note" x="750" y="1153" text-anchor="end">totalDistance += parseFloat(distance.text) — "528 ft" → 528 mi</text>
+    <text class="note" x="750" y="1169" text-anchor="end">totalDuration += parseInt(duration.text) — "1 hour 12 mins" → 1 min</text>
+    <text class="note" x="530" y="1212" text-anchor="middle">{ optimizedOrder, totalDistance, totalDuration }</text>
+    <text class="note" x="530" y="1240" text-anchor="middle">or throws Error('Could not optimize route')</text>
+    <circle class="b-green" cx="772" cy="1222" r="12"/>
+    <text class="lbl" x="772" y="1227" text-anchor="middle">13</text>
+    <line class="edge-dash" x1="760" y1="1222" x2="301" y2="1222" marker-end="url(#ah)"/>
+    <rect class="b-red" x="14" y="1252" width="244.0" height="44" rx="8"/>
+    <text class="lbl" x="28" y="1271">503 <tspan class="note mono">ROUTE_OPTIMIZATION_FAILED</tspan></text>
+    <text class="note" x="28" y="1288">Google call failed or found no route</text>
+    <line class="edge-dash" x1="300" y1="1274" x2="259.995" y2="1274" marker-end="url(#ah)"/>
+    <rect class="b-blue" x="278.0" y="1318" width="369.9" height="66" rx="8"/>
+    <circle class="b-blue" cx="300" cy="1351" r="12"/>
+    <text class="lbl" x="300" y="1356" text-anchor="middle">14</text>
+    <text class="lbl" x="322" y="1341">map addresses back to locations</text>
+    <text class="note" x="322" y="1359">loc.address === address — first match wins</text>
+    <text class="note" x="322" y="1375">keeps id, name, address, lat/lng, elapsedDays, status</text>
+    <rect class="b-blue" x="278.0" y="1400" width="372.0" height="66" rx="8"/>
+    <circle class="b-blue" cx="300" cy="1433" r="12"/>
+    <text class="lbl" x="300" y="1438" text-anchor="middle">15</text>
+    <text class="lbl" x="322" y="1423">build routeSummary</text>
+    <text class="note" x="322" y="1441">"Current Location → A → B → …" from location names</text>
+    <text class="note" x="322" y="1457">ends "→ Current Location" only if returnToStart</text>
+    <text class="note" x="185" y="1502" text-anchor="middle">200 — JSON envelope</text>
+    <circle class="b-blue" cx="300" cy="1512" r="12"/>
+    <text class="lbl" x="300" y="1517" text-anchor="middle">16</text>
+    <line class="edge-dash" x1="288" y1="1512" x2="71" y2="1512" marker-end="url(#ah)"/>
+    <rect class="b-orange" x="14" y="1532" width="740" height="66" rx="8"/>
+    <text class="lbl" x="28" y="1555">response body</text>
+    <text class="note" x="28" y="1573">{ success: true, message: "Optimized route for N locations", data }</text>
+    <text class="note" x="28" y="1589">data = optimizedOrder[ ], totalDistance (mi), totalDuration (min), routeSummary, estimatedTime "Xh Ym", savings (fixed text)</text>
+    <rect class="b-red" x="14" y="1618" width="246" height="60" rx="8"/>
+    <text class="lbl" x="28" y="1637">500 <tspan class="note mono">INTERNAL_ERROR</tspan></text>
+    <text class="note" x="28" y="1654">catch-all via handleApiError</text>
+    <text class="note" x="28" y="1670">e.g. invalid JSON body, database error</text>
+    <line class="edge-dash" x1="300" y1="1648" x2="262" y2="1648" marker-end="url(#ah)"/>
+  </g>
+</svg>
