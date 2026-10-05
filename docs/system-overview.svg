@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 672" width="1000" height="672" role="img" aria-label="Lost Children Charity Platform system overview. Today any HTTP client calls the API with JSON; POST bodies are checked by Zod and no route checks auth. A planned Android app (Retrofit declared in Gradle, no Kotlin) and a planned web dashboard (Tailwind config, no pages) are not built. The web/ Next.js 14 App Router app has three route handlers: /api/locations (GET list with an optional overdue filter, POST create), /api/locations/:id/mark-changed (POST, resets the timer) and /api/routes/optimize (POST, visit order plus total miles and minutes). All three call LocationController, which lists, creates and resets locations, derives status through utils.ts (fresh under 7 days, else overdue) and talks to PostgreSQL through Prisma Client; a reset updates the location and inserts a box_changes row in one transaction. The optimize route also loads each location by id, then passes the origin and the addresses to utils.ts, which asks the Google Maps Directions API for a round trip with optimize:true and gets back waypoint_order and legs. In PostgreSQL only the locations and box_changes tables are written; routes, route_stops and users are modeled but never written.">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .b-planned{fill:none;stroke:#818b98;stroke-width:1.4;stroke-dasharray:5 4}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .dot{fill:#59636e}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .b-planned{stroke:#9198a1}
+      .dot{fill:#9198a1}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1000" height="672" rx="12"/>
+  <text class="title" x="32" y="48">Lost Children Charity Platform — system overview</text>
+  <text class="sub" x="32" y="74">A headless Next.js 14 API stores one restock timestamp per location; status is derived on every read.</text>
+
+  <!-- ===== Clients ===== -->
+  <rect class="group" x="134" y="92" width="732" height="96" rx="12"/>
+  <text class="glbl" x="150" y="113">CLIENTS</text>
+
+  <rect class="b-orange" x="150" y="122" width="190" height="56" rx="10"/>
+  <text class="lbl" x="245" y="146" text-anchor="middle">Any HTTP client</text>
+  <text class="note" x="245" y="165" text-anchor="middle">how the API is used today</text>
+
+  <rect class="b-planned" x="405" y="122" width="190" height="56" rx="10"/>
+  <text class="lbl" x="500" y="146" text-anchor="middle">Android app</text>
+  <text class="note" x="500" y="165" text-anchor="middle">Gradle config, no Kotlin</text>
+
+  <rect class="b-planned" x="660" y="122" width="190" height="56" rx="10"/>
+  <text class="lbl" x="755" y="146" text-anchor="middle">Web dashboard</text>
+  <text class="note" x="755" y="165" text-anchor="middle">Tailwind config, no pages</text>
+
+  <!-- feeds into one request bus -->
+  <path class="edge" d="M245,178 V218"/>
+  <path class="edge-dash" d="M500,178 V218"/>
+  <path class="edge-dash" d="M755,178 V218 H705"/>
+  <path class="edge" d="M155,218 H705"/>
+  <circle class="dot" cx="245" cy="218" r="3.5"/>
+  <circle class="dot" cx="500" cy="218" r="3.5"/>
+  <circle class="dot" cx="435" cy="218" r="3.5"/>
+  <circle class="dot" cx="705" cy="218" r="3.5"/>
+  <text class="elbl" x="237" y="208" text-anchor="end">HTTP · JSON</text>
+  <text class="elbl" x="253" y="208">POST bodies Zod-checked · no auth</text>
+  <text class="elbl" x="508" y="208">Retrofit (planned)</text>
+  <path class="edge" d="M155,218 V266" marker-end="url(#ah)"/>
+  <path class="edge" d="M435,218 V266" marker-end="url(#ah)"/>
+  <path class="edge" d="M705,218 V266" marker-end="url(#ah)"/>
+
+  <!-- ===== web/ : the one implemented component ===== -->
+  <rect class="group" x="24" y="236" width="952" height="236" rx="12"/>
+  <text class="glbl" x="960" y="257" text-anchor="end">web/ · NEXT.JS 14 APP ROUTER</text>
+
+  <rect class="b-blue" x="40" y="268" width="230" height="56" rx="10"/>
+  <text class="lbl mono" x="155" y="292" text-anchor="middle">/api/locations</text>
+  <text class="note" x="155" y="311" text-anchor="middle">GET list (?overdue) · POST create</text>
+
+  <rect class="b-blue" x="290" y="268" width="290" height="56" rx="10"/>
+  <text class="lbl mono" x="435" y="292" text-anchor="middle">/api/locations/:id/mark-changed</text>
+  <text class="note" x="435" y="311" text-anchor="middle">POST · resets the timer</text>
+
+  <rect class="b-blue" x="600" y="268" width="210" height="56" rx="10"/>
+  <text class="lbl mono" x="705" y="292" text-anchor="middle">/api/routes/optimize</text>
+  <text class="note" x="705" y="311" text-anchor="middle">POST · visit order + totals</text>
+
+  <rect class="b-green" x="40" y="400" width="480" height="56" rx="10"/>
+  <text class="lbl mono" x="280" y="424" text-anchor="middle">LocationController</text>
+  <text class="note" x="280" y="443" text-anchor="middle">list · create · reset timer</text>
+
+  <rect class="b-green" x="610" y="400" width="190" height="56" rx="10"/>
+  <text class="lbl mono" x="705" y="424" text-anchor="middle">utils.ts</text>
+  <text class="note" x="705" y="443" text-anchor="middle">fresh &lt; 7 days · Maps client</text>
+
+  <!-- route handlers into the lib layer -->
+  <path class="edge" d="M155,324 V396" marker-end="url(#ah)"/>
+  <path class="edge" d="M435,324 V396" marker-end="url(#ah)"/>
+  <path class="edge" d="M650,324 V362 H490 V396" marker-end="url(#ah)"/>
+  <text class="elbl" x="565" y="354" text-anchor="middle">getLocationById per id</text>
+  <path class="edge" d="M755,324 V396" marker-end="url(#ah)"/>
+  <text class="elbl" x="765" y="366">optimizeRoute(origin, addresses)</text>
+  <path class="edge" d="M520,428 H606" marker-end="url(#ah)"/>
+  <text class="elbl" x="565" y="420" text-anchor="middle">derive status</text>
+
+  <!-- ===== Out of process: database and Google ===== -->
+  <path class="edge" d="M170,456 V548" marker-end="url(#ah)"/>
+  <text class="elbl" x="180" y="494">Prisma Client · DATABASE_URL</text>
+  <text class="elbl" x="180" y="509">reset = update + insert in one $transaction</text>
+
+  <path class="edge" d="M705,460 V548" marker-start="url(#ah)" marker-end="url(#ah)"/>
+  <text class="elbl" x="715" y="494">directions · optimize:true · round trip</text>
+  <text class="elbl" x="715" y="509">returns waypoint_order + legs</text>
+
+  <rect class="group" x="24" y="520" width="572" height="100" rx="12"/>
+  <text class="glbl" x="40" y="541">POSTGRESQL</text>
+
+  <rect class="b-gray" x="40" y="552" width="260" height="56" rx="10"/>
+  <text class="lbl mono" x="170" y="576" text-anchor="middle">locations · box_changes</text>
+  <text class="note" x="170" y="595" text-anchor="middle">lastBoxChange is the timer</text>
+
+  <rect class="b-planned" x="320" y="552" width="260" height="56" rx="10"/>
+  <text class="lbl mono" x="450" y="576" text-anchor="middle">routes · route_stops · users</text>
+  <text class="note" x="450" y="595" text-anchor="middle">modeled, never written</text>
+
+  <rect class="b-purple" x="630" y="552" width="270" height="56" rx="10"/>
+  <text class="lbl" x="765" y="576" text-anchor="middle">Google Maps Directions API</text>
+  <text class="note" x="765" y="595" text-anchor="middle">picks the waypoint order</text>
+
+  <!-- ===== Legend ===== -->
+  <rect class="b-orange" x="40" y="640" width="22" height="13" rx="3"/>
+  <text class="note" x="70" y="651">client</text>
+  <rect class="b-blue" x="128" y="640" width="22" height="13" rx="3"/>
+  <text class="note" x="158" y="651">API route handler</text>
+  <rect class="b-green" x="282" y="640" width="22" height="13" rx="3"/>
+  <text class="note" x="312" y="651">server module</text>
+  <rect class="b-gray" x="414" y="640" width="22" height="13" rx="3"/>
+  <text class="note" x="444" y="651">live tables</text>
+  <rect class="b-purple" x="532" y="640" width="22" height="13" rx="3"/>
+  <text class="note" x="562" y="651">external service</text>
+  <rect class="b-planned" x="680" y="640" width="22" height="13" rx="3"/>
+  <text class="note" x="710" y="651">dashed = planned or unused</text>
+</svg>

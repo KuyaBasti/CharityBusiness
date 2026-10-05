@@ -1,8 +1,10 @@
 # Lost Children Charity Platform (CharityBusiness)
 
-A platform for keeping charity **candy donation boxes** stocked: every location is a **timer**. The core stores one timestamp per location — `lastBoxChange` — and everything the platform reports (**elapsed days**, **fresh/overdue status**, "3 days ago") is *derived* from it on every read, never stored. A worker's one-tap **"Mark as Changed"** resets the timer and appends an immutable `BoxChange` history row in a single transaction; a **route optimizer** hands Google Maps Directions the day's stale locations and gets back the best visiting order with total miles and minutes.
+<p align="center"><img src="docs/system-overview.svg" alt="System overview of the Lost Children Charity Platform. Today any HTTP client calls the API over HTTP with JSON; POST bodies are Zod-checked and no route checks auth. A planned Android app (Gradle config, no Kotlin; Retrofit planned) and a planned web dashboard (Tailwind config, no pages) are drawn dashed. Inside web/, a Next.js 14 App Router app, three API routes: /api/locations (GET list with an optional ?overdue filter, POST create), /api/locations/:id/mark-changed (POST, resets the timer) and /api/routes/optimize (POST, visit order plus totals). All three call LocationController (list, create, reset timer), which derives status through utils.ts (fresh under 7 days) and reaches PostgreSQL through Prisma Client; a reset is an update plus an insert in one $transaction. The optimize route also calls getLocationById per id, then optimizeRoute(origin, addresses) in utils.ts, which asks the Google Maps Directions API for a round trip with optimize:true and gets back waypoint_order and legs. In PostgreSQL, locations and box_changes are the live tables and lastBoxChange is the timer; routes, route_stops and users are modeled but never written." width="100%"></p>
 
-The interesting part isn't the endpoints — it's the honest shape of the repo: of the four components laid out (`android/`, `backend/`, `web/`, `docs/`), **exactly one is implemented**. The entire working platform is **976 lines of TypeScript** in `web/`: a headless **Next.js 14 App Router** API with three endpoints, a controller, a **Prisma/PostgreSQL** schema, and **Zod** validation at every door. The Android client is a Gradle file with no Kotlin behind it, `backend/` is five empty directories, and the web UI is a ring of empty folders around a working API. This README documents what's real, what's scaffold, and where the sharp edges are.
+A platform for keeping charity **candy donation boxes** stocked: every location is a **timer**. The core stores one timestamp per location — `lastBoxChange` — and everything the platform reports (**elapsed days**, **fresh/overdue status**, "3 days ago") is *derived* from it on every read, never stored. A worker's one-tap **"Mark as Changed"** resets the timer and appends an immutable `BoxChange` history row in a single transaction; a **route optimizer** hands Google Maps Directions the locations the caller picks (meant to be the overdue ones) and gets back the best visiting order with total miles and minutes.
+
+The interesting part isn't the endpoints — it's the honest shape of the repo: of the four components laid out (`android/`, `backend/`, `web/`, `docs/`), **exactly one is implemented**. The entire working platform is **983 lines of TypeScript** in `web/`: a headless **Next.js 14 App Router** API with three endpoints, a controller, a **Prisma/PostgreSQL** schema, and **Zod** validation on every POST body. The Android client is Gradle build config and a manifest with no Kotlin behind it, `backend/` is five empty directories, and the web UI is a ring of empty folders around a working API — empty folders that git never tracked, so neither `backend/` nor those UI folders appear in a clone of the repository. This README documents what's real, what's scaffold, and where the sharp edges are.
 
 ---
 
@@ -22,20 +24,7 @@ The interesting part isn't the endpoints — it's the honest shape of the repo: 
 
 ## How the Timer Loop Works
 
-```mermaid
-flowchart TD
-    W["charity worker<br/>(via the planned Android app,<br/>today: any HTTP client)"] --> LIST["GET /api/locations?overdue=true<br/>which boxes are stale?"]
-    LIST --> CALC["calculateElapsedDays(lastBoxChange)<br/>&lt; 7 days → 'fresh', else 'overdue'"]
-    CALC --> RESP["JSON per location:<br/>elapsedDays, status, '3 days ago'"]
-    RESP --> OPT["POST /api/routes/optimize<br/>currentLocation + locationIds"]
-    OPT --> GMAPS["Google Maps Directions<br/>waypoints = optimize:true"]
-    GMAPS --> ORDER["optimized visit order +<br/>total miles / minutes + summary"]
-    ORDER --> VISIT["worker restocks a box"]
-    VISIT --> MARK["POST /api/locations/:id/mark-changed"]
-    MARK --> TX["prisma.$transaction:<br/>reset lastBoxChange = now<br/>+ append BoxChange history row"]
-    TX --> FRESH["elapsedDays = 0, status 'fresh',<br/>lastChangeFormatted 'Today'"]
-    FRESH -. "next visit cycle" .-> LIST
-```
+<p align="center"><img src="docs/timer-loop.svg" alt="Flowchart of the timer loop. Left column: a charity worker (any HTTP client today, no auth check; the planned Android app has no Kotlin yet) calls GET /api/locations?overdue=true. getOverdueLocations fetches every active row with its newest BoxChange, runs calculateElapsedDays on each and keeps the overdue ones, returning JSON { success, data, count } in which overdue rows read 1 week ago or N days ago (N at least 14). The worker picks location ids, overdue or not, and calls POST /api/routes/optimize with currentLocation, at least one id and an optional returnToStart; getLocationById re-derives each one, and optimizeRoute asks the Google Maps Directions API with optimize:true waypoints and destination equal to origin, so the route is always a round trip. The result is the visit order, total miles and minutes including the return leg, and a Current Location → A → B summary. After restocking, the worker sends one POST per location visited to /api/locations/:id/mark-changed (optional changedBy, notes and boxCount; an empty body is a 500), whose prisma.$transaction sets lastBoxChange and updatedAt to now and appends one box_changes row, both or neither; the response re-derives 0, fresh, Today without storing them, and the next visit cycle begins. Right panel: POST /api/locations sets lastBoxChange to now and writes no BoxChange row; lastBoxChange is the only stored timer and there is no status column. days = floor((now − lastBoxChange) / 86,400,000 ms), fresh below 7 and overdue from 7. A day ruler shows Today, 1 day ago, N days ago for days 2–6, 1 week ago for 7–13 and N days ago from 14; Mark as Changed puts any day back to day 0, and status flips on the next read with no cron job and no write. WARNING_THRESHOLD 14 is never read, so warning is unreachable." width="100%"></p>
 
 Nothing ever writes a status to the database. The `locations` row keeps one timestamp; freshness, elapsed days, and the human-readable "1 week ago" are recomputed by [utils.ts](web/src/lib/utils.ts) on every read, so a location silently drifts from `fresh` to `overdue` at the 7-day mark with no cron job, no background worker, and nothing to get out of sync.
 
@@ -45,18 +34,24 @@ Nothing ever writes a status to the database. The `locations` row keeps one time
 CharityBusiness-main/
 ├── README.md                     # you are here
 ├── SYSTEM-DESIGN.md              # the architecture-level view
-├── FILELIST.txt                  # build artifact — 27,780-line recursive listing (incl. .git internals)
+├── FILELIST.txt                  # local only, not in git — 27,780-line recursive listing (incl. .git internals)
 ├── docs/
-│   └── SECURITY.md               # key-handling policy (Google Maps, Stripe, keystores) —
-│                                 #   written for a bigger platform than was built (no Stripe anywhere)
+│   ├── SECURITY.md               # key-handling policy (Google Maps, Stripe, keystores) —
+│   │                             #   written for a bigger platform than was built (no Stripe anywhere)
+│   ├── system-overview.svg       # system overview diagram at the top of this README
+│   ├── timer-loop.svg            # the timer loop diagram (How the Timer Loop Works)
+│   ├── system-design-flowchart.svg   # SYSTEM-DESIGN.md end-to-end flowchart
+│   ├── optimize-call.svg         # SYSTEM-DESIGN.md deep dive 1 — one optimize call
+│   └── timer-and-reset.svg       # SYSTEM-DESIGN.md deep dive 2 — the timer and its reset
 ├── backend/                      # ⚠ five EMPTY directories: config/ controllers/ middleware/ models/ routes/
-│                                 #   an Express-style scaffold; the real backend lives in web/src/app/api
+│                                 #   from the first "shared backend (if separate)" plan; the real backend lives in web/src/app/api
+│                                 #   local only: git does not track empty dirs, so a clone has no backend/
 ├── android/                      # ⚠ Gradle config + manifest only — zero Kotlin source files
 │   ├── build.gradle              # AGP 8.1.2, Kotlin 1.9.10, Compose 1.5.4, secrets-gradle-plugin
 │   ├── app/build.gradle          # com.charity.lostchildren — SDK 24→34, Compose, Room, Retrofit, Maps
 │   ├── app/src/main/AndroidManifest.xml   # permissions + .MainActivity (which doesn't exist)
 │   ├── local.properties.example  # SDK path / Maps key / API base-URL template
-│   └── {app/…}                   # ⚠ empty dirs from an unbalanced-brace mkdir -p — see sharp edges
+│   └── {app/…}                   # ⚠ local-only empty dirs from a mkdir -p whose outer brace never expanded — see sharp edges
 └── web/                          # ✅ the implemented component: a headless Next.js 14 App Router API
     ├── package.json              # next / prisma / zod / @googlemaps — plus next-auth & zustand,
     │                             #   installed but never imported
@@ -64,20 +59,20 @@ CharityBusiness-main/
     ├── src/
     │   ├── app/api/
     │   │   ├── locations/route.ts                    # GET list (+ ?overdue=true) / POST create
-    │   │   ├── locations/[id]/mark-changed/route.ts  # POST — the timer reset ("THE KEY FEATURE!")
+    │   │   ├── locations/[id]/mark-changed/route.ts  # POST — the timer reset ("THE CORE FEATURE!")
     │   │   └── routes/optimize/route.ts              # POST — Google-optimized visiting order
     │   ├── lib/
-    │   │   ├── controllers/locationController.ts     # all business logic (4 of 9 methods unwired)
+    │   │   ├── controllers/locationController.ts     # location CRUD, timer reset, analytics (4 of 9 methods unwired)
     │   │   ├── db.ts                                 # PrismaClient singleton, dev-global cached
     │   │   └── utils.ts                              # elapsed-day math, Google Maps calls, error model
     │   ├── types/index.ts        # domain + API types, TIME_THRESHOLDS (7 / 14 days)
-    │   └── app/analytics|auth|locations|routes, components/, hooks/, styles/   # ⚠ all empty — no UI
-    ├── .env                      # ⚠ present with live-looking credentials — see sharp edges
+    │   └── app/analytics|auth|locations|routes, components/, hooks/, styles/   # ⚠ all empty, local only (not in git) — no UI
+    ├── .env                      # local only, gitignored, never committed — see sharp edges
     ├── env.example / env.example.template   # two generations of env templates
     ├── next.config.js            # still carries Next 13's experimental.appDir flag
     ├── tailwind.config.js        # charity color palette — no page or stylesheet uses it yet
-    ├── tsconfig.json             # strict: false, "@/*" → src/*
-    └── .next/                    # build artifact — dev-server output
+    ├── tsconfig.json             # local only, not in git — strict: false, "@/*" → src/* (the alias every internal import relies on)
+    └── .next/                    # local only, gitignored — dev-server output
 ```
 
 ## The Data Model
@@ -93,7 +88,7 @@ CharityBusiness-main/
 
 ## The API Surface
 
-Three endpoints, each following the same shape: a **Zod schema** at the top of the route file, `schema.parse(body)`, a call into [`LocationController`](web/src/lib/controllers/locationController.ts), and a `{ success, data, message }` JSON envelope. Zod failures return 400 with the issue list; everything else flows through `handleApiError`, which sniffs Prisma error messages into 409 (`Unique constraint`) and 404 (`Record to update not found`).
+Three endpoints; the three POST handlers follow the same shape: a **Zod schema** at the top of the route file, `schema.parse(body)`, a call into [`LocationController`](web/src/lib/controllers/locationController.ts), and a `{ success, data, message }` JSON envelope, while `GET /api/locations` only checks `?overdue=true` and returns `{ success, data, count }`. Zod failures return 400 with the issue list; everything else flows through `handleApiError`, which sniffs Prisma error messages into 409 (`Unique constraint`) and 404 (`Record to update not found`). The optimize route also answers 400 `NO_VALID_LOCATIONS` when no id matches a row, and 503 `ROUTE_OPTIMIZATION_FAILED` when the Google Maps step throws.
 
 | Endpoint | What it does |
 |---|---|
@@ -106,19 +101,19 @@ The controller holds more surface than the API exposes: `updateLocation`, `delet
 
 ## Route Optimization
 
-[utils.ts](web/src/lib/utils.ts) wraps `@googlemaps/google-maps-services-js`. The optimize endpoint loads each requested location from the database, hands Google the *addresses* (not the coordinates), and asks for `directions` with `optimize: true` — which the client library serializes as the `waypoints=optimize:true|…` parameter, making Google solve the traveling-salesman ordering. The response's `waypoint_order` is mapped back to locations **by exact address string equality**, and total distance/duration are summed from each leg's *display text* (`"3.2 mi"`, `"8 mins"`) rather than the numeric meter/second values — a choice with teeth, see [sharp edges](#known-limitations--sharp-edges).
+[utils.ts](web/src/lib/utils.ts) wraps `@googlemaps/google-maps-services-js`. The optimize endpoint loads each requested location from the database and hands `optimizeRoute` the *addresses* (not the coordinates); it asks Google for `directions` with `optimize: true` — which the client library serializes as the `waypoints=optimize:true|…` parameter, making Google solve the traveling-salesman ordering. The response's `waypoint_order` is mapped back to locations **by exact address string equality**, and total distance/duration are summed from each leg's *display text* (`"3.2 mi"`, `"8 mins"`) rather than the numeric meter/second values — a choice with teeth, see [sharp edges](#known-limitations--sharp-edges).
 
 Also in the toolbox but never called from any route: a Distance Matrix wrapper (`calculateDrivingDistances`), a geocoder (`addressToCoordinates`), and a haversine fallback (`calculateStraightLineDistance`, Earth radius 3,959 mi).
 
 ## The Planned Clients
 
-- **Android** ([android/](android/)) — a complete *build configuration* for `com.charity.lostchildren`: Kotlin 1.9.10, Jetpack Compose 1.5.4, Navigation, ViewModel, **Room** 2.6.1 for offline caching, **Retrofit** 2.9.0 for the REST calls, Maps Compose 2.15.0, and the secrets-gradle-plugin injecting `GOOGLE_MAPS_API_KEY` from `local.properties` into the manifest. What's missing is the app: there are **no Kotlin files, no `res/` directory, no `settings.gradle`, no Gradle wrapper**, and the manifest's `.MainActivity`, theme, icons, and backup-rules XMLs don't exist. The intended architecture is still legible in the accidental `{app/…}` directories: `ui/auth`, `ui/tracking`, `ui/distribution`, `ui/maps`, `data`, `domain`, `network`, `utils`.
-- **Web UI** — `src/app/analytics`, `auth`, `locations`, `routes`, plus `components/`, `hooks/`, and `styles/` are all empty; there is **no `page.tsx` or `layout.tsx` anywhere**. Tailwind is configured with a `charity` palette that nothing renders. The Next.js app is an API server wearing a full-stack framework.
-- **`backend/`** — `config/`, `controllers/`, `middleware/`, `models/`, `routes/`: five empty directories from an Express-era plan, superseded by the App Router API in `web/`.
+- **Android** ([android/](android/)) — a complete *build configuration* for `com.charity.lostchildren`: Kotlin 1.9.10, Jetpack Compose 1.5.4, Navigation, ViewModel, **Room** 2.6.1 for offline caching, **Retrofit** 2.9.0 for the REST calls, Maps Compose 2.15.0, and the secrets-gradle-plugin injecting `GOOGLE_MAPS_API_KEY` from `local.properties` into the manifest. What's missing is the app: there are **no Kotlin files, no `res/` directory, no `settings.gradle`, no Gradle wrapper**, and the manifest's `.MainActivity`, theme, icons, and backup-rules XMLs don't exist. The intended architecture is still legible in the accidental `{app/…}` directories of the local working copy (empty, so never tracked by git): `ui/auth`, `ui/tracking`, `ui/distribution`, `ui/maps`, `data`, `domain`, `network`, `utils`.
+- **Web UI** — `src/app/analytics`, `auth`, `locations`, `routes`, plus `components/`, `hooks/`, and `styles/` are all empty local folders that git never tracked; there is **no `page.tsx` or `layout.tsx` anywhere**. Tailwind is configured with a `charity` palette that nothing renders. The Next.js app is an API server wearing a full-stack framework.
+- **`backend/`** — `config/`, `controllers/`, `middleware/`, `models/`, `routes/`: five empty directories from the initial layout's "shared backend (if separate)" plan, superseded by the App Router API in `web/`; being empty, they were never tracked by git and are absent from a clone.
 
 ## Build & Run
 
-What you actually need: **Node.js 18+**, a **PostgreSQL 13+** database, and a **Google Maps API key** with the Directions API enabled. There is nothing to build in `android/` or `backend/`.
+What you actually need: **Node.js 18.17+**, a **PostgreSQL** database, and a **Google Maps API key** with the Directions API enabled. There is nothing to build in `android/` or `backend/`. A fresh clone also needs a `web/tsconfig.json`: that file is not in git, yet every internal import goes through its `"@/*"` path alias, so add one with `"baseUrl": "."` and `"paths": { "@/*": ["./src/*"] }` before `npm run dev`.
 
 ```bash
 cd web
@@ -147,8 +142,8 @@ curl -X POST localhost:3000/api/locations/<id>/mark-changed -H 'Content-Type: ap
 
 Honest notes — some are scope cuts, several are latent bugs, one is a security incident in waiting:
 
-- **`web/.env` ships in the repo with real-looking credentials** — a Google Maps API key, a 64-hex `NEXTAUTH_SECRET`, and a Postgres password — despite `.gitignore` listing `**/.env` and [SECURITY.md](docs/SECURITY.md) existing specifically to prevent this. Treat every value in that file as burned: rotate the Maps key and use your own database credentials.
-- **Anyone can do anything.** `next-auth` is installed, `NEXTAUTH_SECRET` is configured, and the `User`/`UserRole` model exists — but there is no NextAuth route, no session check, no middleware. All endpoints are unauthenticated writes.
+- **A local `web/.env` holds real-looking credentials** — a Google Maps API key, a 64-hex `NEXTAUTH_SECRET`, and a Postgres password. `.gitignore` (`**/.env`) has kept it out of every commit, as [SECURITY.md](docs/SECURITY.md) intends, so the repository does not ship it; if that working folder was ever shared, rotate the Maps key and use your own database credentials.
+- **Anyone can do anything.** `next-auth` is installed, `NEXTAUTH_SECRET` is configured, and the `User`/`UserRole` model exists — but there is no NextAuth route, no session check, no middleware. All endpoints are unauthenticated, including every write.
 - **`returnToStart` is cosmetic.** The Google request always sets `destination: origin`, so the route *always* returns to start and the totals always include the return leg; the flag only decides whether the summary string ends with "Current Location".
 - **Distances are parsed from display text.** `parseFloat("3.2 mi")` works — but with imperial units Google reports short legs in feet, so `"528 ft"` parses as **528 miles**; and `parseInt` on `"1 hour 12 mins"` yields **1 minute**. Any trip with an hour-plus leg or a sub-0.1-mile hop reports garbage totals.
 - **Address-equality mapping.** The optimized order is matched back to locations by `loc.address === address`; two locations sharing an address will both map to the first one.
@@ -156,8 +151,8 @@ Honest notes — some are scope cuts, several are latent bugs, one is a security
 - **An empty POST body 500s.** `mark-changed`'s fields are all optional, but `request.json()` throws on an empty body before Zod ever runs — send `{}` at minimum.
 - **Half the controller is unwired.** `updateLocation`, `deleteLocation`, `batchMarkBoxesChanged`, `getLocationAnalytics` have no routes; `calculateDrivingDistances` is imported by the optimize route and never called. There is no way to edit or delete a location over HTTP.
 - **`Route`/`RouteStop` are schema-only.** Optimized routes are never persisted; `getOverdueLocations` fetches *all* locations and filters in JS; `activeLocations` always equals `totalLocations` (the query already filters `isActive`).
-- **The `android/{app` directories** are a shell accident: an `mkdir -p android/{app/src/main/java/com/charity/{…},app/src/main/res}` whose outer brace never expanded, leaving literal `{app` and `res}` directory names. Harmless, empty, and — together with the real empty package dirs `ui/locations` and `ui/toggle` under `android/app/src/main/java/com/charity/` — the fullest surviving record of the intended package layout.
-- **Config drift** — `next.config.js` still sets Next 13's `experimental.appDir` (Next 14 warns about it) and plumbs a `CUSTOM_KEY` env var that is never defined; `tsconfig.json` has `strict: false`; the two env templates disagree on variable names (`GOOGLE_MAPS_API_KEY` vs `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`); `FILELIST.txt` and `web/.next/` are build debris in the tree.
+- **The `android/{app` directories** are a shell accident: an `mkdir -p android/{app/src/main/java/com/charity/{…}} android/{app/src/main/res}` whose outer braces held no comma and so never expanded, leaving a literal `{app` directory and a stray `}` on every leaf (`ui/auth}`, `utils}`, `res}`). Harmless, empty, local-only (git does not track empty directories, so none of them is in the repository), and — together with the real empty package dirs `ui/locations` and `ui/toggle` under `android/app/src/main/java/com/charity/` — the fullest record of the intended package layout.
+- **Config drift** — `next.config.js` still sets Next 13's `experimental.appDir` (Next 14 warns about it) and plumbs a `CUSTOM_KEY` env var that is never defined; `tsconfig.json` (local only, not in git) has `strict: false`; the two env templates disagree on variable names (`GOOGLE_MAPS_API_KEY` vs `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`); `FILELIST.txt` and `web/.next/` are local build debris that git does not track.
 - **No tests.** Not one — see the [verification section of SYSTEM-DESIGN.md](SYSTEM-DESIGN.md#verification--testing-status).
 
 ## Provenance

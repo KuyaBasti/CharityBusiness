@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1200" width="1000" height="1200" role="img" aria-label="The timer loop of the Lost Children Charity Platform API. Each location row stores one timestamp, lastBoxChange, first set to now when POST /api/locations creates the row. Every response that returns a location re-derives elapsed days, status and a human-readable string from it with calculateElapsedDays: days = floor((now minus lastBoxChange) / 86,400,000 ms), fresh below 7 days, overdue from 7 days. The loop: a charity worker (any HTTP client today, with no auth check; the Android app it would use is planned and has no Kotlin source) calls GET /api/locations?overdue=true, which derives every active row and keeps the overdue ones, so overdue rows read 1 week ago or N days ago with N at least 14. The worker picks location ids and calls POST /api/routes/optimize, which re-derives each location and asks Google Maps Directions with waypoints optimize:true and destination equal to origin, returning the visit order, total miles and minutes, and a summary. After restocking, the worker sends one POST per location visited to /api/locations/:id/mark-changed (an optional boxCount records how many boxes), whose prisma transaction sets lastBoxChange and updatedAt to now and appends one box_changes row, both or neither; the response re-derives elapsed days 0, fresh, Today. Days pass with lastBoxChange untouched, the status flips to overdue at day 7 on the next read with no cron job and no write, and the next visit cycle starts again.">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .b-red{fill:#ffebe9;stroke:#ff8182;stroke-width:1.5}
+    .b-planned{fill:none;stroke:#818b98;stroke-width:1.4;stroke-dasharray:5 4}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .wire{stroke:#59636e;stroke-width:1.4;fill:none}
+    .dot{fill:#59636e}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .b-red{fill:#3c1618;stroke:#f85149}
+      .b-planned{stroke:#9198a1}
+      .wire{stroke:#9198a1}
+      .dot{fill:#9198a1}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1000" height="1200" rx="12"/>
+  <text class="title" x="32" y="48">Lost Children Charity Platform — how the timer loop works</text>
+  <text class="sub" x="32" y="74">Each location stores one timestamp; elapsed days and status are derived on every read; Mark as Changed resets it.</text>
+
+  <!-- ===== legend (top right) ===== -->
+  <text class="glbl" x="566" y="112">LEGEND</text>
+  <rect class="b-blue" x="566" y="122" width="26" height="14" rx="4"/>
+  <text class="note" x="602" y="133">API code in web/src</text>
+  <rect class="b-gray" x="566" y="144" width="26" height="14" rx="4"/>
+  <text class="note" x="602" y="155">stored in PostgreSQL</text>
+  <rect class="b-orange" x="566" y="166" width="26" height="14" rx="4"/>
+  <text class="note" x="602" y="177">the charity worker (no code)</text>
+  <rect class="b-purple" x="566" y="188" width="26" height="14" rx="4"/>
+  <text class="note" x="602" y="199">external: Google Maps</text>
+  <path class="edge" d="M566,217 H590" marker-end="url(#ah)"/>
+  <text class="note" x="602" y="221">control flow</text>
+  <rect class="b-green" x="780" y="122" width="26" height="14" rx="4"/>
+  <text class="note" x="816" y="133">derived status: fresh</text>
+  <rect class="b-red" x="780" y="144" width="26" height="14" rx="4"/>
+  <text class="note" x="816" y="155">derived status: overdue</text>
+  <rect class="b-planned" x="780" y="166" width="26" height="14" rx="4"/>
+  <text class="note" x="816" y="177">planned, not built</text>
+  <path class="edge-dash" d="M780,195 H804" marker-end="url(#ah)"/>
+  <text class="note" x="816" y="199">data link, not control flow</text>
+
+  <!-- ===== the visit loop (left column) ===== -->
+  <rect class="b-orange" x="40" y="100" width="250" height="56" rx="10"/>
+  <text class="lbl" x="165" y="123" text-anchor="middle">charity worker</text>
+  <text class="note" x="165" y="141" text-anchor="middle">today: any HTTP client, no auth check</text>
+  <rect class="b-planned" x="316" y="100" width="154" height="56" rx="10"/>
+  <text class="lbl" x="393" y="123" text-anchor="middle">via Android app</text>
+  <text class="note" x="393" y="141" text-anchor="middle">planned · no Kotlin yet</text>
+  <path class="edge" d="M165,156 V180" marker-end="url(#ah)"/>
+
+  <rect class="b-blue" x="40" y="184" width="430" height="72" rx="10"/>
+  <text class="lbl mono" x="255" y="207" text-anchor="middle">GET /api/locations?overdue=true</text>
+  <text class="note" x="255" y="225" text-anchor="middle">which boxes are stale?</text>
+  <text class="note" x="255" y="242" text-anchor="middle">without the flag: every active location</text>
+  <path class="edge" d="M255,256 V280" marker-end="url(#ah)"/>
+  <text class="elbl" x="265" y="274">getOverdueLocations()</text>
+
+  <rect class="b-blue" x="40" y="284" width="430" height="72" rx="10"/>
+  <text class="lbl" x="255" y="307" text-anchor="middle">derive every row, then filter in JS</text>
+  <text class="note" x="255" y="325" text-anchor="middle">findMany where isActive (+ newest BoxChange, take 1)</text>
+  <text class="note" x="255" y="342" text-anchor="middle">calculateElapsedDays per row · keep status = 'overdue'</text>
+  <path class="edge" d="M255,356 V380" marker-end="url(#ah)"/>
+
+  <rect class="b-blue" x="40" y="384" width="430" height="72" rx="10"/>
+  <text class="lbl mono" x="255" y="407" text-anchor="middle">JSON { success, data, count }</text>
+  <text class="note" x="255" y="425" text-anchor="middle">each row + elapsedDays, status, lastChangeFormatted</text>
+  <text class="note" x="255" y="442" text-anchor="middle">overdue rows read “1 week ago” or “N days ago” (N ≥ 14)</text>
+  <path class="edge" d="M255,456 V492" marker-end="url(#ah)"/>
+  <text class="elbl" x="245" y="479" text-anchor="end">worker picks ids (overdue or not)</text>
+
+  <rect class="b-blue" x="40" y="496" width="430" height="72" rx="10"/>
+  <text class="lbl mono" x="255" y="519" text-anchor="middle">POST /api/routes/optimize</text>
+  <text class="note" x="255" y="537" text-anchor="middle">currentLocation + locationIds (≥ 1) + returnToStart?</text>
+  <text class="note" x="255" y="554" text-anchor="middle">getLocationById per id re-derives elapsedDays + status</text>
+  <path class="edge" d="M255,568 V592" marker-end="url(#ah)"/>
+  <text class="elbl" x="265" y="586">optimizeRoute(currentLocation, addresses)</text>
+
+  <rect class="b-purple" x="40" y="596" width="430" height="72" rx="10"/>
+  <text class="lbl" x="255" y="619" text-anchor="middle">Google Maps Directions API</text>
+  <text class="note" x="255" y="637" text-anchor="middle">waypoints = optimize:true | the locations’ addresses</text>
+  <text class="note" x="255" y="654" text-anchor="middle">destination = origin, so it is always a round trip</text>
+  <path class="edge" d="M255,668 V692" marker-end="url(#ah)"/>
+  <text class="elbl" x="265" y="686">routes[0]: waypoint_order + legs</text>
+
+  <rect class="b-blue" x="40" y="696" width="430" height="72" rx="10"/>
+  <text class="lbl" x="255" y="719" text-anchor="middle">optimized visit order</text>
+  <text class="note" x="255" y="737" text-anchor="middle">+ total miles and minutes (return leg included)</text>
+  <text class="note" x="255" y="754" text-anchor="middle">+ “Current Location → A → B → …” summary</text>
+  <path class="edge" d="M255,768 V792" marker-end="url(#ah)"/>
+  <text class="elbl" x="265" y="786">worker follows the route</text>
+
+  <rect class="b-orange" x="40" y="796" width="430" height="56" rx="10"/>
+  <text class="lbl" x="255" y="819" text-anchor="middle">worker restocks the location’s boxes</text>
+  <text class="note" x="255" y="837" text-anchor="middle">on site — nothing runs in the code</text>
+  <path class="edge" d="M255,852 V876" marker-end="url(#ah)"/>
+  <text class="elbl" x="265" y="870">“Mark as Changed” — one POST per location</text>
+
+  <rect class="b-blue" x="40" y="880" width="430" height="72" rx="10"/>
+  <text class="lbl mono" x="255" y="903" text-anchor="middle">POST /api/locations/:id/mark-changed</text>
+  <text class="note" x="255" y="921" text-anchor="middle">Zod: changedBy?, notes?, boxCount? (positive int)</text>
+  <text class="note" x="255" y="938" text-anchor="middle">body must be JSON, {} at least — an empty body is a 500</text>
+  <path class="edge" d="M255,952 V976" marker-end="url(#ah)"/>
+
+  <rect class="b-blue" x="40" y="980" width="430" height="72" rx="10"/>
+  <text class="lbl" x="255" y="1003" text-anchor="middle">prisma.$transaction — both writes or neither</text>
+  <text class="note" x="255" y="1021" text-anchor="middle">location.update: lastBoxChange = now, updatedAt = now</text>
+  <text class="note" x="255" y="1038" text-anchor="middle">boxChange.create: changedAt = now + the optional fields</text>
+  <path class="edge" d="M255,1052 V1076" marker-end="url(#ah)"/>
+
+  <rect class="b-blue" x="40" y="1080" width="430" height="56" rx="10"/>
+  <text class="lbl" x="255" y="1103" text-anchor="middle">response: elapsedDays 0 · 'fresh' · “Today”</text>
+  <text class="note" x="255" y="1121" text-anchor="middle">re-derived from the new timestamp — not stored</text>
+
+  <!-- next visit cycle: back to the list -->
+  <path class="edge" d="M255,1136 V1160 H22 V220 H36" marker-end="url(#ah)"/>
+  <text class="elbl" x="40" y="1178">next visit cycle — days pass; lastBoxChange is untouched until the next reset</text>
+
+  <!-- ===== one location's timer (right column) ===== -->
+  <rect class="group" x="546" y="262" width="430" height="810" rx="12"/>
+  <text class="glbl" x="562" y="282">ONE LOCATION’S TIMER — STORED VS DERIVED</text>
+
+  <rect class="b-blue" x="566" y="296" width="390" height="72" rx="10"/>
+  <text class="lbl mono" x="761" y="319" text-anchor="middle">calculateElapsedDays(lastBoxChange)</text>
+  <text class="note" x="761" y="337" text-anchor="middle">days = floor((now − lastBoxChange) / 86,400,000 ms)</text>
+  <text class="note" x="761" y="354" text-anchor="middle">status = days &lt; 7 ? 'fresh' : 'overdue'</text>
+
+  <path class="edge-dash" d="M761,420 V372" marker-end="url(#ah)"/>
+  <text class="elbl" x="771" y="400">read on every request</text>
+
+  <rect class="b-gray" x="566" y="420" width="390" height="72" rx="10"/>
+  <text class="lbl mono" x="761" y="443" text-anchor="middle">locations.lastBoxChange</text>
+  <text class="note" x="761" y="461" text-anchor="middle">DateTime @default(now()) — no status column</text>
+  <text class="note" x="761" y="478" text-anchor="middle">set at create · reset to now by mark-changed</text>
+
+  <path class="edge-dash" d="M761,548 V496" marker-end="url(#ah)"/>
+  <text class="elbl" x="771" y="526">first value: now</text>
+
+  <rect class="b-blue" x="566" y="548" width="390" height="72" rx="10"/>
+  <text class="lbl mono" x="761" y="571" text-anchor="middle">POST /api/locations</text>
+  <text class="note" x="761" y="589" text-anchor="middle">create: lastBoxChange = now — the timer starts</text>
+  <text class="note" x="761" y="606" text-anchor="middle">no BoxChange row is written at creation</text>
+
+  <!-- elapsed-day ruler -->
+  <text class="lbl" x="566" y="704">What a read returns as days pass</text>
+  <text class="note" x="673" y="730" text-anchor="middle">fresh — days &lt; 7</text>
+  <text class="note" x="868" y="730" text-anchor="middle">overdue — days ≥ 7</text>
+  <path class="wire" d="M568,744 V738 H776 V744"/>
+  <path class="wire" d="M784,744 V738 H954 V744"/>
+  <rect class="b-green" x="566" y="750" width="60" height="54" rx="6"/>
+  <text class="lbl" x="596" y="773" text-anchor="middle">day 0</text>
+  <text class="note" x="596" y="791" text-anchor="middle">Today</text>
+  <rect class="b-green" x="626" y="750" width="72" height="54" rx="6"/>
+  <text class="lbl" x="662" y="773" text-anchor="middle">day 1</text>
+  <text class="note" x="662" y="791" text-anchor="middle">1 day ago</text>
+  <rect class="b-green" x="698" y="750" width="82" height="54" rx="6"/>
+  <text class="lbl" x="739" y="773" text-anchor="middle">2–6</text>
+  <text class="note" x="739" y="791" text-anchor="middle">N days ago</text>
+  <rect class="b-red" x="780" y="750" width="86" height="54" rx="6"/>
+  <text class="lbl" x="823" y="773" text-anchor="middle">7–13</text>
+  <text class="note" x="823" y="791" text-anchor="middle">1 week ago</text>
+  <rect class="b-red" x="866" y="750" width="90" height="54" rx="6"/>
+  <text class="lbl" x="911" y="773" text-anchor="middle">14+</text>
+  <text class="note" x="911" y="791" text-anchor="middle">N days ago</text>
+  <path class="edge" d="M911,804 V824 H596 V808" marker-end="url(#ah)"/>
+  <text class="elbl" x="753" y="840" text-anchor="middle">Mark as Changed puts any day back to day 0</text>
+  <text class="note" x="566" y="868">status flips at day 7 on the next read — no cron job, no write</text>
+  <text class="note" x="566" y="886">WARNING_THRESHOLD = 14 is never read: 'warning' is unreachable</text>
+
+  <rect class="b-gray" x="566" y="980" width="390" height="72" rx="10"/>
+  <text class="lbl mono" x="761" y="1003" text-anchor="middle">box_changes</text>
+  <text class="note" x="761" y="1021" text-anchor="middle">append-only history: one row per mark-changed</text>
+  <text class="note" x="761" y="1038" text-anchor="middle">changedAt · changedBy? · notes? · boxCount?</text>
+
+  <!-- links between the loop and the timer -->
+  <path class="edge-dash" d="M566,330 H474" marker-end="url(#ah)"/>
+  <text class="elbl" x="518" y="322" text-anchor="middle">per row</text>
+  <path class="edge-dash" d="M566,352 H500 V532 H474" marker-end="url(#ah)"/>
+  <text class="elbl" x="506" y="430">per id</text>
+  <path class="edge-dash" d="M470,996 H524 V470 H562" marker-end="url(#ah)"/>
+  <text class="elbl" x="497" y="989" text-anchor="middle">reset</text>
+  <path class="edge-dash" d="M470,1030 H562" marker-end="url(#ah)"/>
+  <text class="elbl" x="518" y="1022" text-anchor="middle">append</text>
+</svg>

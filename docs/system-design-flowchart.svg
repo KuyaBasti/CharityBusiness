@@ -1,0 +1,237 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1264" width="1000" height="1264" role="img" aria-label="Lost Children Charity Platform end-to-end flowchart. Today any HTTP client drives the API; the planned Android app (Retrofit, Room and Maps declared in Gradle, no Kotlin files, API_BASE_URL set to localhost:3000/api) and the planned web dashboard (Tailwind config only, no page.tsx or layout.tsx) have no code. Requests reach four Next.js 14 route handlers in web/src/app/api: GET /api/locations (optional ?overdue=true, no body and no Zod schema), POST /api/locations, POST /api/locations/:id/mark-changed and POST /api/routes/optimize. Each POST body is parsed by its Zod schema, and a failed parse returns 400: createLocationSchema (name, address, lat within ±90 and lng within ±180, all required), markBoxChangeSchema (every field optional) and optimizeRouteSchema (currentLocation plus at least one location id, returnToStart defaults to true). The handlers call LocationController: getAllLocations or getOverdueLocations, createLocation, markBoxesChanged, and getLocationById once per id in parallel; 5 of its 9 methods are reached by a route, while updateLocation, deleteLocation, batchMarkBoxesChanged and getLocationAnalytics are not. The controller uses utils.ts (calculateElapsedDays for days and status on each row, under 7 days fresh, otherwise overdue; isValidCoordinates on create) and queries PostgreSQL through the PrismaClient singleton from db.ts that each route file passes in: findMany, findUnique, create and update on locations, which holds the lastBoxChange timer and the isActive soft-delete flag, and create on box_changes, the append-only history written in the same transaction as the timer reset. The routes, route_stops and users tables are in the schema but never queried. The optimize route also calls optimizeRoute in utils.ts, which sends a directions request to the Google Maps Directions API with origin and destination both set to currentLocation, the addresses as waypoints, optimize true, driving and imperial units; Google returns routes[0] with waypoint_order and legs.">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .b-red{fill:#ffebe9;stroke:#ff8182;stroke-width:1.5}
+    .b-planned{fill:none;stroke:#818b98;stroke-width:1.4;stroke-dasharray:5 4}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .dot{fill:#59636e}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .b-red{fill:#3c1618;stroke:#f85149}
+      .b-planned{stroke:#9198a1}
+      .dot{fill:#9198a1}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1000" height="1264" rx="12"/>
+  <text class="title" x="32" y="48">Lost Children Charity Platform — end-to-end flowchart</text>
+  <text class="sub" x="32" y="74">Only web/ runs: four Next.js route handlers, Zod on each POST body, one controller, Prisma, and Google Maps.</text>
+
+  <!-- ===== Clients ===== -->
+  <rect class="group" x="24" y="92" width="952" height="120" rx="12"/>
+  <text class="glbl" x="40" y="113">CLIENTS</text>
+  <rect class="b-planned" x="40" y="124" width="280" height="72" rx="10"/>
+  <text class="lbl" x="180" y="148" text-anchor="middle">Android app — planned</text>
+  <text class="note" x="180" y="167" text-anchor="middle">Kotlin + Compose · Retrofit, Room, Maps</text>
+  <text class="note" x="180" y="185" text-anchor="middle">declared in Gradle · zero Kotlin files</text>
+  <rect class="b-orange" x="360" y="124" width="280" height="72" rx="10"/>
+  <text class="lbl" x="500" y="155" text-anchor="middle">any HTTP client</text>
+  <text class="note" x="500" y="174" text-anchor="middle">how the API is driven today</text>
+  <rect class="b-planned" x="680" y="124" width="280" height="72" rx="10"/>
+  <text class="lbl" x="820" y="148" text-anchor="middle">web dashboard — planned</text>
+  <text class="note" x="820" y="167" text-anchor="middle">Tailwind config + charity palette</text>
+  <text class="note" x="820" y="185" text-anchor="middle">no page.tsx or layout.tsx anywhere</text>
+
+  <!-- planned clients -> API layer (dashed: never written) -->
+  <path class="edge-dash" d="M70,196 V254" marker-end="url(#ah)"/>
+  <text class="elbl" x="80" y="229">Retrofit calls — never written</text>
+  <text class="elbl" x="80" y="243">(API_BASE_URL → localhost:3000/api)</text>
+  <path class="edge-dash" d="M930,196 V254" marker-end="url(#ah)"/>
+  <text class="elbl" x="920" y="236" text-anchor="end">pages — never written</text>
+
+  <!-- ===== API layer ===== -->
+  <rect class="group" x="24" y="256" width="952" height="272" rx="12"/>
+  <text class="glbl" x="40" y="277">API LAYER — web/src/app/api</text>
+  <text class="glbl" x="40" y="293">NEXT.JS 14 APP ROUTER ROUTE HANDLERS</text>
+
+  <!-- HTTP client trunk + bus to the four handlers -->
+  <path class="edge" d="M500,196 V306"/>
+  <path class="edge" d="M140,306 H846"/>
+  <path class="edge" d="M140,306 V327" marker-end="url(#ah)"/>
+  <path class="edge" d="M354,306 V327" marker-end="url(#ah)"/>
+  <path class="edge" d="M593,306 V327" marker-end="url(#ah)"/>
+  <path class="edge" d="M846,306 V327" marker-end="url(#ah)"/>
+  <circle class="dot" cx="354" cy="306" r="3"/>
+  <circle class="dot" cx="500" cy="306" r="3"/>
+  <circle class="dot" cx="593" cy="306" r="3"/>
+
+  <rect class="b-blue" x="40" y="330" width="200" height="72" rx="10"/>
+  <text class="lbl" x="140" y="354" text-anchor="middle">GET /api/locations</text>
+  <text class="note" x="140" y="373" text-anchor="middle">?overdue=true → overdue only</text>
+  <text class="note" x="140" y="391" text-anchor="middle">no body, so no Zod schema</text>
+  <rect class="b-blue" x="254" y="330" width="200" height="72" rx="10"/>
+  <text class="lbl" x="354" y="354" text-anchor="middle">POST /api/locations</text>
+  <text class="note" x="354" y="373" text-anchor="middle">creates a location</text>
+  <text class="note" x="354" y="391" text-anchor="middle">its timer starts at now</text>
+  <rect class="b-blue" x="468" y="330" width="250" height="72" rx="10"/>
+  <text class="lbl" x="593" y="354" text-anchor="middle">POST mark-changed</text>
+  <text class="note mono" x="593" y="373" text-anchor="middle">/api/locations/:id/mark-changed</text>
+  <text class="note" x="593" y="391" text-anchor="middle">resets the box timer</text>
+  <rect class="b-blue" x="732" y="330" width="228" height="72" rx="10"/>
+  <text class="lbl" x="846" y="354" text-anchor="middle">POST /api/routes/optimize</text>
+  <text class="note" x="846" y="373" text-anchor="middle">best visiting order for N locations</text>
+  <text class="note" x="846" y="391" text-anchor="middle">the only route that calls Google</text>
+
+  <!-- handlers -> Zod schemas -->
+  <path class="edge" d="M354,402 V436" marker-end="url(#ah)"/>
+  <text class="elbl" x="362" y="423">parse(body)</text>
+  <path class="edge" d="M593,402 V436" marker-end="url(#ah)"/>
+  <text class="elbl" x="601" y="423">parse(body)</text>
+  <path class="edge" d="M846,402 V436" marker-end="url(#ah)"/>
+  <text class="elbl" x="854" y="423">parse(body)</text>
+
+  <rect class="b-red" x="254" y="440" width="200" height="72" rx="10"/>
+  <text class="lbl" x="354" y="464" text-anchor="middle">createLocationSchema</text>
+  <text class="note" x="354" y="483" text-anchor="middle">name, address, lat, lng</text>
+  <text class="note" x="354" y="501" text-anchor="middle">required · lat ±90, lng ±180</text>
+  <rect class="b-red" x="468" y="440" width="250" height="72" rx="10"/>
+  <text class="lbl" x="593" y="464" text-anchor="middle">markBoxChangeSchema</text>
+  <text class="note" x="593" y="483" text-anchor="middle">every field optional</text>
+  <text class="note" x="593" y="501" text-anchor="middle">boxCount: positive integer</text>
+  <rect class="b-red" x="732" y="440" width="228" height="72" rx="10"/>
+  <text class="lbl" x="846" y="464" text-anchor="middle">optimizeRouteSchema</text>
+  <text class="note" x="846" y="483" text-anchor="middle">currentLocation + ≥ 1 location id</text>
+  <text class="note" x="846" y="501" text-anchor="middle">returnToStart defaults to true</text>
+
+  <!-- handlers / schemas -> LocationController -->
+  <path class="edge" d="M190,402 V650" marker-end="url(#ah)"/>
+  <text class="elbl" x="182" y="566" text-anchor="end">getAllLocations() or</text>
+  <text class="elbl" x="182" y="580" text-anchor="end">getOverdueLocations()</text>
+  <path class="edge" d="M354,512 V650" marker-end="url(#ah)"/>
+  <text class="elbl" x="346" y="566" text-anchor="end">createLocation()</text>
+  <path class="edge" d="M593,512 V650" marker-end="url(#ah)"/>
+  <text class="elbl" x="585" y="566" text-anchor="end">markBoxesChanged(id)</text>
+  <path class="edge" d="M760,512 V548 H622 V650" marker-end="url(#ah)"/>
+  <text class="elbl" x="630" y="566">getLocationById(id) × N,</text>
+  <text class="elbl" x="630" y="580">in parallel (Promise.all)</text>
+
+  <!-- optimize route -> utils.optimizeRoute -->
+  <path class="edge" d="M900,512 V776" marker-end="url(#ah)"/>
+  <text class="elbl" x="892" y="690" text-anchor="end">optimizeRoute(</text>
+  <text class="elbl" x="892" y="704" text-anchor="end">currentLocation, addresses)</text>
+
+  <!-- ===== Business logic ===== -->
+  <rect class="group" x="24" y="604" width="952" height="264" rx="12"/>
+  <text class="glbl" x="40" y="626">BUSINESS LOGIC</text>
+  <text class="glbl" x="40" y="642">web/src/lib</text>
+
+  <rect class="b-green" x="40" y="654" width="600" height="72" rx="10"/>
+  <text class="lbl" x="340" y="678" text-anchor="middle">LocationController</text>
+  <text class="note" x="340" y="697" text-anchor="middle">5 of its 9 methods are reached by a route (the calls above)</text>
+  <text class="note" x="340" y="715" text-anchor="middle">no route calls updateLocation · deleteLocation · batchMarkBoxesChanged · getLocationAnalytics</text>
+
+  <path class="edge" d="M185,726 V776" marker-end="url(#ah)"/>
+  <text class="elbl" x="193" y="748">PrismaClient from db.ts,</text>
+  <text class="elbl" x="193" y="762">passed in by each route file</text>
+  <path class="edge" d="M620,726 V776" marker-end="url(#ah)"/>
+  <text class="elbl" x="628" y="748">calculateElapsedDays() → days + status, per row</text>
+  <text class="elbl" x="628" y="762">isValidCoordinates() on create</text>
+
+  <rect class="b-green" x="40" y="780" width="290" height="72" rx="10"/>
+  <text class="lbl" x="185" y="804" text-anchor="middle">db.ts</text>
+  <text class="note" x="185" y="823" text-anchor="middle">PrismaClient singleton</text>
+  <text class="note" x="185" y="841" text-anchor="middle">cached on globalThis outside production</text>
+  <rect class="b-green" x="600" y="780" width="360" height="72" rx="10"/>
+  <text class="lbl" x="780" y="804" text-anchor="middle">utils.ts</text>
+  <text class="note" x="780" y="823" text-anchor="middle">elapsed-day math (&lt; 7 days fresh, else overdue)</text>
+  <text class="note" x="780" y="841" text-anchor="middle">Google Maps wrappers · handleApiError → 409 / 404 / 500</text>
+
+  <!-- ===== Data store ===== -->
+  <rect class="group" x="24" y="892" width="640" height="248" rx="12"/>
+  <text class="glbl" x="40" y="1126">DATA STORE — POSTGRESQL VIA PRISMA 5</text>
+
+  <path class="edge" d="M135,852 V1026" marker-end="url(#ah)"/>
+  <text class="elbl" x="143" y="916">findMany · findUnique</text>
+  <text class="elbl" x="143" y="930">create · update</text>
+  <path class="edge" d="M300,852 V1026" marker-end="url(#ah)"/>
+  <text class="elbl" x="308" y="916">create, in the same $transaction</text>
+  <text class="elbl" x="308" y="930">as the lastBoxChange reset;</text>
+  <text class="elbl" x="308" y="944">read via include: newest 1 or 10</text>
+  <path class="edge-dash" d="M330,816 H530 V1026" marker-end="url(#ah)"/>
+  <text class="elbl" x="538" y="916">never queried</text>
+
+  <rect class="b-gray" x="40" y="1030" width="190" height="72" rx="10"/>
+  <text class="lbl" x="135" y="1054" text-anchor="middle">locations</text>
+  <text class="note" x="135" y="1073" text-anchor="middle">lastBoxChange — the timer</text>
+  <text class="note" x="135" y="1091" text-anchor="middle">isActive soft-delete flag</text>
+  <rect class="b-gray" x="246" y="1030" width="190" height="72" rx="10"/>
+  <text class="lbl" x="341" y="1054" text-anchor="middle">box_changes</text>
+  <text class="note" x="341" y="1073" text-anchor="middle">append-only change history</text>
+  <text class="note" x="341" y="1091" text-anchor="middle">cascades on location delete</text>
+  <rect class="b-planned" x="452" y="1030" width="196" height="72" rx="10"/>
+  <text class="lbl" x="550" y="1054" text-anchor="middle">dormant tables</text>
+  <text class="note" x="550" y="1073" text-anchor="middle">routes · route_stops · users</text>
+  <text class="note" x="550" y="1091" text-anchor="middle">in the schema, never written</text>
+
+  <!-- ===== External service ===== -->
+  <rect class="group" x="684" y="892" width="292" height="248" rx="12"/>
+  <text class="glbl" x="700" y="1126">EXTERNAL SERVICE</text>
+
+  <path class="edge" d="M730,852 V1026" marker-end="url(#ah)"/>
+  <text class="elbl" x="738" y="914">directions() request:</text>
+  <text class="elbl" x="738" y="928">origin = currentLocation</text>
+  <text class="elbl" x="738" y="942">destination = origin</text>
+  <text class="elbl" x="738" y="956">waypoints = addresses</text>
+  <text class="elbl" x="738" y="970">optimize: true · driving</text>
+  <text class="elbl" x="738" y="984">units: imperial</text>
+  <path class="edge" d="M930,1030 V856" marker-end="url(#ah)"/>
+  <text class="elbl" x="922" y="1008" text-anchor="end">routes[0]: waypoint_order + legs</text>
+
+  <rect class="b-purple" x="700" y="1030" width="260" height="72" rx="10"/>
+  <text class="lbl" x="830" y="1054" text-anchor="middle">Google Maps Directions API</text>
+  <text class="note mono" x="830" y="1073" text-anchor="middle">waypoints=optimize:true|…</text>
+  <text class="note" x="830" y="1091" text-anchor="middle">solves the visiting order</text>
+
+  <!-- ===== Legend ===== -->
+  <text class="glbl" x="40" y="1168">LEGEND</text>
+  <rect class="b-orange" x="40" y="1182" width="26" height="14" rx="4"/>
+  <text class="note" x="78" y="1193">client that works today</text>
+  <rect class="b-blue" x="270" y="1182" width="26" height="14" rx="4"/>
+  <text class="note" x="308" y="1193">Next.js route handler</text>
+  <rect class="b-red" x="500" y="1182" width="26" height="14" rx="4"/>
+  <text class="note" x="538" y="1193">Zod schema (failed parse → 400)</text>
+  <rect class="b-green" x="760" y="1182" width="26" height="14" rx="4"/>
+  <text class="note" x="798" y="1193">web/src/lib module</text>
+  <rect class="b-gray" x="40" y="1204" width="26" height="14" rx="4"/>
+  <text class="note" x="78" y="1215">PostgreSQL table</text>
+  <rect class="b-purple" x="270" y="1204" width="26" height="14" rx="4"/>
+  <text class="note" x="308" y="1215">external service</text>
+  <rect class="b-planned" x="500" y="1204" width="26" height="14" rx="4"/>
+  <text class="note" x="538" y="1215">dashed box = declared, not built or never used</text>
+  <path class="edge" d="M40,1233 H66" marker-end="url(#ah)"/>
+  <text class="note" x="78" y="1237">call / data flow</text>
+  <path class="edge-dash" d="M270,1233 H296" marker-end="url(#ah)"/>
+  <text class="note" x="308" y="1237">planned or never-run path</text>
+  <circle class="dot" cx="513" cy="1233" r="3"/>
+  <text class="note" x="538" y="1237">junction of the shared request path</text>
+</svg>
